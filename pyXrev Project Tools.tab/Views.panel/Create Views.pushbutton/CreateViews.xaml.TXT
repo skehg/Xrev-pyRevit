@@ -1,0 +1,120 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Create Plan Views"
+        Height="400" Width="440"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize">
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>   <!-- Phase + Abbrev -->
+            <RowDefinition Height="Auto"/>   <!-- Prefix + Suffix -->
+            <RowDefinition Height="Auto"/>   <!-- Plan Types -->
+            <RowDefinition Height="Auto"/>   <!-- Buttons -->
+        </Grid.RowDefinitions>
+
+
+        <!-- ========================= -->
+        <!--   PHASE + ABBREV FRAME   -->
+        <!-- ========================= -->
+        <GroupBox Header="Phase Settings" Grid.Row="0" Margin="0 0 0 12">
+            <Grid Margin="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="60"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="60"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Text="Phase:" Grid.Column="0" VerticalAlignment="Center"/>
+                <ComboBox x:Name="phaseBox" Grid.Column="1" Height="26"/>
+
+                <TextBlock Text="Abbrev:" Grid.Column="2" VerticalAlignment="Center" Margin="10 0 0 0"/>
+                <TextBox x:Name="phaseAbbrevBox" Grid.Column="3" Height="26"
+                             ToolTip="Optional - alternate name for Phase"/>
+            </Grid>
+        </GroupBox>
+
+
+        <!-- ========================= -->
+        <!--   PREFIX + SUFFIX FRAME  -->
+        <!-- ========================= -->
+        <GroupBox Header="Naming Settings" Grid.Row="1" Margin="0 0 0 12">
+            <Grid Margin="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="60"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="60"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Text="Prefix:" Grid.Column="0" VerticalAlignment="Center"/>
+                <TextBox x:Name="prefixBox" Grid.Column="1" Height="26"
+                             ToolTip="Optional Prefix. Include delimiter"/>
+
+                <TextBlock Text="Suffix:" Grid.Column="2" VerticalAlignment="Center" Margin="10 0 0 0"/>
+                <TextBox x:Name="suffixBox" Grid.Column="3" Height="26"
+                             ToolTip="Optional Suffix. Include delimiter"/>
+            </Grid>
+        </GroupBox>
+
+
+        <!-- ========================= -->
+        <!--   PLAN TYPES FRAME       -->
+        <!-- ========================= -->
+        <GroupBox Header="Plan Types" Grid.Row="2" Margin="0 0 0 12">
+            <StackPanel Margin="10">
+
+                <!-- FLOOR -->
+                <Grid Margin="0 0 0 8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="100"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <CheckBox x:Name="floorPlanBox" Content="Floor Plan" Grid.Column="0" IsChecked="True"/>
+                    <TextBox x:Name="floorNameBox" Grid.Column="1" Height="24" Margin="10 0 0 0"
+                             ToolTip="Optional custom name for Floor Plans"/>
+                </Grid>
+
+                <!-- CEILING -->
+                <Grid Margin="0 0 0 8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="100"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <CheckBox x:Name="ceilingPlanBox" Content="Ceiling Plan" Grid.Column="0"/>
+                    <TextBox x:Name="ceilingNameBox" Grid.Column="1" Height="24" Margin="10 0 0 0"
+                             ToolTip="Optional custom name for Ceiling Plans"/>
+                </Grid>
+
+                <!-- STRUCTURAL -->
+                <Grid Margin="0 0 0 0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="100"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <CheckBox x:Name="structPlanBox" Content="Structural Plan" Grid.Column="0"/>
+                    <TextBox x:Name="structNameBox" Grid.Column="1" Height="24" Margin="10 0 0 0"
+                             ToolTip="Optional custom name for Structural Plans"/>
+                </Grid>
+
+            </StackPanel>
+        </GroupBox>
+
+
+        <!-- ========================= -->
+        <!--        BUTTONS           -->
+        <!-- ========================= -->
+        <StackPanel Grid.Row="3"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,10,0,0">
+            <Button x:Name="okButton" Content="OK" Width="80" Margin="0 0 10 0"/>
+            <Button x:Name="cancelButton" Content="Cancel" Width="80"/>
+        </StackPanel>
+
+    </Grid>
+</Window>

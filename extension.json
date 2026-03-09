@@ -1,0 +1,18 @@
+{
+    "extensions": [{
+            "builtin": "False",
+            "default_enabled": "True",
+            "type": "extension",
+            "rocket_mode_compatible": "False",
+            "name": "pyXrev-Project Toolss",
+            "description": "Extensions for Revit Productivity",
+            "author": "Kent Watson",
+            "author_profile": "",
+            "url": "https://github.com/",
+            "website": "",
+            "image": "",
+            "dependencies": []
+        }
+       
+    ]
+}

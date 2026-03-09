@@ -1,0 +1,29 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Transfer Category Settings" Height="520" Width="420"
+        WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <CheckBox x:Name="chkVisibility" Grid.Row="0"
+                  Content="Copy Visibility State" Margin="0,0,0,8"/>
+        <CheckBox x:Name="chkStyles" Grid.Row="1"
+                  Content="Copy Visual Styles" Margin="0,0,0,16"/>
+
+        <TextBlock Grid.Row="2" Text="Select Categories:" FontWeight="Bold"/>
+
+        <ListBox x:Name="lstCategories" Grid.Row="3"
+                 SelectionMode="Extended" Height="360" BorderThickness="1" Margin="0,6,0,10"/>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="btnOK" Content="OK" Width="90" Margin="5"/>
+            <Button x:Name="btnCancel" Content="Cancel" Width="90" Margin="5"/>
+        </StackPanel>
+    </Grid>
+</Window>

@@ -1,0 +1,26 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Split by Level - Select Levels"
+        Height="350" Width="280" WindowStartupLocation="CenterScreen">
+    <DockPanel Margin="10">
+
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,5">
+            <TextBlock Text="Select levels to split at:" Margin="0,0,0,5"/>
+        </StackPanel>
+
+        <ListBox x:Name="lstLevels" DockPanel.Dock="Top" Height="220" />
+
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                <Button Content="Select All" Width="80" Margin="0,0,5,0" Click="on_select_all"/>
+                <Button Content="Select None" Width="80" Click="on_select_none"/>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="OK" Width="70" Margin="0,0,5,0" Click="on_ok"/>
+                <Button Content="Cancel" Width="70" Click="on_cancel"/>
+            </StackPanel>
+        </StackPanel>
+
+    </DockPanel>
+</Window>
