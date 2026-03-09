@@ -82,34 +82,3 @@ finally:
             t.RollBack()
     except:
         pass
-
-# -------------------------------
-# 6. User-specified CSV path
-# -------------------------------
-log_path = forms.save_file(file_ext='csv', title='Save Audit Log As')
-if not log_path:
-    log_path = os.path.join(os.getenv("USERPROFILE"), "Desktop", "ParentCategoryAudit.csv")
-
-# -------------------------------
-# 7. Write audit log
-# -------------------------------
-try:
-    with open(log_path, "w") as f:
-        writer = csv.writer(f)
-        writer.writerow(["Template", "Parent Category", "Visibility"])
-        for vt in templates_to_update:
-            for cat in categories_to_update:
-                writer.writerow([
-                    vt.Name,
-                    cat.Name,
-                    "Hidden" if set_hidden else "Visible"
-                ])
-        if errors:
-            writer.writerow([])
-            writer.writerow(["Warnings / Errors"])
-            for msg in errors:
-                writer.writerow([msg])
-except Exception as e:
-    forms.alert("Failed to write audit log:\n{}\nPath: {}".format(e, log_path))
-
-forms.alert("Updates complete.\nAudit log saved to:\n{}".format(log_path))

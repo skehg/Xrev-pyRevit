@@ -1,0 +1,9 @@
+title:
+  en_us: Transfer Visuals
+  fr_fr: Transférer les visuels
+  es_es: Transferir visuales
+tooltip: 
+  en_us: transfer visual styles from one view template to multiple other view templates
+  fr_fr: transférer les styles visuels d'un modèle de vue à plusieurs autres modèles de vue
+  es_es: transferir estilos visuales de una plantilla de vista a varias otras plantillas de vista
+# highlight: new
