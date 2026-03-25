@@ -1,16 +1,9 @@
-title:
-  en_us: Create Plans
-  fr_fr: Bouton Pushbutton
-  ru: Кнопка Pushbutton
-  chinese_s: Pushbutton 按钮
-  es_es: Botón Pushbutton
-  de_de: Pushbutton Schaltfläche
-  pt_br: Botão
-tooltip:
-  en_us: Pushbutton
-  fr_fr: Bouton Pushbutton
-  ru: Кнопка Pushbutton
-  chinese_s: Pushbutton 按钮
-  es_es: Botón Pushbutton
-  de_de: Pushbutton Schaltfläche
-  pt_br: Botão
+title: Create Plans
+tooltip: >
+  Create Plan Views based on selected Phase and Levels  
+  Assign view templates.
+  Name views based on Phase and Levels.
+  Add preffix and suffix to view names.
+author: Kent + Copilot
+highlight: True
+icon: icon.png
