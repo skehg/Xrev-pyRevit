@@ -37,8 +37,8 @@
     <!-- OK / Cancel buttons -->
     <StackPanel Orientation="Horizontal"
                 HorizontalAlignment="Right">
-        <Button x:Name="okButton" Content="OK" Width="80" Margin="0,0,8,0"/>
-        <Button x:Name="cancelButton" Content="Cancel" Width="80"/>
+        <Button x:Name="okButton" Content="OK" Width="80" Height="30" Margin="0,0,8,0"/>
+        <Button x:Name="cancelButton" Content="Cancel" Width="80" Height="30"/>
     </StackPanel>
 
 </StackPanel>

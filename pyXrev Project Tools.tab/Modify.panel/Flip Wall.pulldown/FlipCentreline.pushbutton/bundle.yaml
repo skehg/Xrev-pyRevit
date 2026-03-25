@@ -1,0 +1,7 @@
+title: Wall Centreline
+tooltip: >
+  Click walls to flip about their centreline.  
+  Continuous mode — press ESC to finish.
+author: Kent + Copilot
+highlight: True
+icon: icon.png

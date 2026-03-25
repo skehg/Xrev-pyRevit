@@ -1,0 +1,5 @@
+title: View Templates
+tooltip: Tools for managing view templates.
+items:
+   - UpdateViewTemplates.pushbutton
+   - ViewTemplateTransferVisualStyles.pushbutton

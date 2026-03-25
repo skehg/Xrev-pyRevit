@@ -1,0 +1,5 @@
+title: Flip Walls
+tooltip: Tools for flipping walls about different axes.
+items:
+   - FlipCentreline.pushbutton
+   - FlipCore.pushbutton
