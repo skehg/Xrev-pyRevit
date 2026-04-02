@@ -1,0 +1,55 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sort Parameter Groups"
+        Height="560" Width="460"
+        MinHeight="460" MinWidth="420"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize">
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="Select parameter groups to sort"
+                   FontWeight="SemiBold"
+                   Margin="0 0 0 8"/>
+
+        <Border Grid.Row="1" BorderBrush="#CFCFCF" BorderThickness="1" CornerRadius="4" Padding="8">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0 0 0 8">
+                    <Button Content="Select All" Width="90" Height="24" Margin="0 0 6 0" Click="on_select_all"/>
+                    <Button Content="Select None" Width="90" Height="24" Click="on_select_none"/>
+                </StackPanel>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="groupPanel" />
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <GroupBox Grid.Row="2" Header="Sort Mode" Margin="0 10 0 0" Padding="8 6 8 8">
+            <StackPanel>
+                <RadioButton x:Name="rbNameOnly" Content="Name Only" IsChecked="True" Margin="0 2 0 2"/>
+                <RadioButton x:Name="rbTypeThenInstance" Content="Type then Instance" Margin="0 2 0 2"/>
+            </StackPanel>
+        </GroupBox>
+
+        <GroupBox Grid.Row="3" Header="Sort Direction" Margin="0 10 0 0" Padding="8 6 8 8">
+            <StackPanel>
+                <RadioButton x:Name="rbAscending" Content="Ascending (A-Z)" IsChecked="True" Margin="0 2 0 2"/>
+                <RadioButton x:Name="rbDescending" Content="Descending (Z-A)" Margin="0 2 0 2"/>
+            </StackPanel>
+        </GroupBox>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0 12 0 0">
+            <Button Content="Sort" Width="90" Height="28" Margin="0 0 8 0" Click="on_ok" IsDefault="True"/>
+            <Button Content="Cancel" Width="90" Height="28" Click="on_cancel" IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</Window>

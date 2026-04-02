@@ -1,0 +1,11 @@
+title: Purge Parameters
+tooltip: >
+  Identifies unused family parameters and lets you selectively delete them.
+  Analyses each parameter to determine if it is directly used in the family
+  (drives geometry, visibility, array count, etc.) or indirectly used via a
+  chain of formulas.  Results are shown in a grid with depth columns that
+  indicate which other safe-to-delete parameters reference each parameter in
+  their formulas.  Default analysis depth is 5; configurable up to 10.
+  Works only in the Family Editor.
+author: Kent + Copilot
+highlight: False

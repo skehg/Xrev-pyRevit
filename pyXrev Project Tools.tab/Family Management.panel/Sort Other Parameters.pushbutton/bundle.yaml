@@ -1,0 +1,9 @@
+title: Sort Parameter Groups
+tooltip: >
+  Lets you select one or more family parameter groups to sort alphabetically.
+  Optional mode can sort as Type parameters first, then Instance parameters.
+  Supports ascending or descending name order.
+  Keeps all non-selected groups in their existing manual order.
+  Works only in the Family Editor.
+author: Kent + Copilot
+highlight: False

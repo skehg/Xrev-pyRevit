@@ -1,0 +1,265 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Purge Unused Parameters"
+        Height="660" Width="980"
+        MinHeight="480" MinWidth="720"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize">
+
+    <Window.Resources>
+
+        <!-- Row style: dim rows that have no formula -->
+        <Style x:Key="ResultRowStyle" TargetType="DataGridRow">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding HasFormula}" Value="False">
+                    <Setter Property="Foreground" Value="#555555"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="HeaderButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Padding" Value="10 0"/>
+            <Setter Property="Margin" Value="0 0 6 0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="DeleteButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Padding" Value="14 0"/>
+            <Setter Property="Margin" Value="0 0 0 0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Background" Value="#C0392B"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="3"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#E74C3C"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#AAAAAA"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- Toolbar -->
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="*"/>     <!-- DataGrid -->
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="Auto"/>  <!-- Bottom buttons -->
+            <RowDefinition Height="6"/>
+            <RowDefinition Height="Auto"/>  <!-- Status bar -->
+        </Grid.RowDefinitions>
+
+        <!-- ============================================================ -->
+        <!-- Toolbar                                                       -->
+        <!-- ============================================================ -->
+        <Border Grid.Row="0"
+                BorderBrush="#DDDDDD" BorderThickness="1"
+                CornerRadius="4" Padding="10 7">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0"
+                           Text="Analysis depth:"
+                           VerticalAlignment="Center"
+                           Margin="0 0 8 0"/>
+
+                <Button Grid.Column="1"
+                        x:Name="btnDepthDown"
+                        Content="-"
+                        Width="24" Height="24"
+                        Margin="0 0 2 0"
+                        VerticalAlignment="Center"
+                        Click="on_depth_down"/>
+
+                <TextBox Grid.Column="2"
+                         x:Name="txtDepth"
+                         Text="5"
+                         Width="36"
+                         Height="24"
+                         TextAlignment="Center"
+                         VerticalAlignment="Center"
+                         VerticalContentAlignment="Center"
+                         Margin="0 0 2 0"/>
+
+                <Button Grid.Column="3"
+                        x:Name="btnDepthUp"
+                        Content="+"
+                        Width="24" Height="24"
+                        Margin="0 0 10 0"
+                        VerticalAlignment="Center"
+                        Click="on_depth_up"/>
+
+                <Button Grid.Column="4"
+                        x:Name="btnAnalyse"
+                        Content="Analyse"
+                        Style="{StaticResource HeaderButtonStyle}"
+                        Click="on_analyse_clicked"/>
+
+                <!-- Spacer -->
+                <TextBlock Grid.Column="5"
+                           x:Name="txtParamCount"
+                           Text=""
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Left"
+                           Foreground="#336699"
+                           Margin="12 0 0 0"/>
+
+                <!-- Selection shortcuts -->
+                <StackPanel Grid.Column="6" Orientation="Horizontal">
+                    <Button Content="Select All"
+                            Style="{StaticResource HeaderButtonStyle}"
+                            Click="on_select_all"/>
+                    <Button Content="Deselect All"
+                            Style="{StaticResource HeaderButtonStyle}"
+                            Click="on_deselect_all"/>
+                    <Button Content="Invert"
+                            Style="{StaticResource HeaderButtonStyle}"
+                            Margin="0"
+                            Click="on_invert_selection"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ============================================================ -->
+        <!-- Result DataGrid                                               -->
+        <!-- ============================================================ -->
+        <DataGrid Grid.Row="2"
+                  x:Name="dataGrid"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  IsReadOnly="False"
+                  SelectionMode="Extended"
+                  SelectionUnit="FullRow"
+                  RowStyle="{StaticResource ResultRowStyle}"
+                  GridLinesVisibility="Horizontal"
+                  AlternatingRowBackground="#F8F8F8"
+                  HeadersVisibility="Column"
+                  BorderBrush="#DDDDDD"
+                  BorderThickness="1"
+                  ColumnHeaderHeight="28"
+                  RowHeight="22"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Auto">
+
+            <DataGrid.Columns>
+
+                <!-- Checkbox -->
+                <DataGridTemplateColumn Header="" Width="32" CanUserSort="False">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay,
+                                      UpdateSourceTrigger=PropertyChanged}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Name -->
+                <DataGridTextColumn Header="Parameter Name"
+                                    Width="180"
+                                    Binding="{Binding Name}"
+                                    IsReadOnly="True"/>
+
+                <!-- Group -->
+                <DataGridTextColumn Header="Group"
+                                    Width="130"
+                                    Binding="{Binding GroupLabel}"
+                                    IsReadOnly="True"/>
+
+                <!-- Instance / Type -->
+                <DataGridTextColumn Header="Inst / Type"
+                                    Width="72"
+                                    Binding="{Binding InstanceTypeLabel}"
+                                    IsReadOnly="True"/>
+
+                <!-- Data type -->
+                <DataGridTextColumn Header="Data Type"
+                                    Width="90"
+                                    Binding="{Binding DataTypeLabel}"
+                                    IsReadOnly="True"/>
+
+                <!-- Own formula -->
+                <DataGridTextColumn Header="Formula"
+                                    Width="160"
+                                    Binding="{Binding Formula}"
+                                    IsReadOnly="True"/>
+
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- ============================================================ -->
+        <!-- Bottom button row                                             -->
+        <!-- ============================================================ -->
+        <Grid Grid.Row="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Placeholder info label -->
+            <TextBlock Grid.Column="0"
+                       VerticalAlignment="Center"
+                       Foreground="#888888"
+                       FontSize="11"
+                       Text="Tick parameters to delete, then click Delete Selected."/>
+
+            <Button Grid.Column="1"
+                    x:Name="btnDelete"
+                    Content="Delete Selected"
+                    Style="{StaticResource DeleteButtonStyle}"
+                    IsEnabled="False"
+                    Click="on_delete_clicked"/>
+
+            <Button Grid.Column="3"
+                    x:Name="btnClose"
+                    Content="Close"
+                    Height="28"
+                    Padding="14 0"
+                    VerticalAlignment="Center"
+                    Click="on_close_clicked"/>
+        </Grid>
+
+        <!-- ============================================================ -->
+        <!-- Status bar                                                    -->
+        <!-- ============================================================ -->
+        <Border Grid.Row="6"
+                BorderBrush="#DDDDDD" BorderThickness="1"
+                CornerRadius="3" Padding="8 4">
+            <TextBlock x:Name="txtStatus"
+                       Text="Click Analyse to scan the family for unused parameters."
+                       FontSize="11"
+                       Foreground="#444444"
+                       TextWrapping="Wrap"/>
+        </Border>
+    </Grid>
+</Window>

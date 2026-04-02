@@ -1,0 +1,7 @@
+title: Parameter Editor
+tooltip: >
+  Create new family/shared parameters and edit formulas on existing family parameters.
+  Includes automatic formula autocomplete from family parameter names while typing.
+  Works only in the Family Editor.
+author: Kent + Copilot
+highlight: False

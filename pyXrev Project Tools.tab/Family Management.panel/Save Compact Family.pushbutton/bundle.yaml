@@ -1,0 +1,10 @@
+title: Save Compact Family
+tooltip: >
+  Compact-saves the current family by saving to a temporary "-new#" file,
+  then saving back to the original base name.
+  Choose whether to move the original to Superseded with timestamp or delete it.
+  Temporarily renames matching txt sidecar to .orig and restores it at the end.
+  Works only in the Family Editor.
+author: Kent + Copilot
+highlight: False
+icon: icon.png

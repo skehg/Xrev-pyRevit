@@ -1,0 +1,10 @@
+title: Transfer Parameters
+tooltip: >
+  Transfers selected parameters from the current family to other open family documents.
+  Maintains instance/type setting, parameter group, and shared parameter definitions.
+  Shared parameters are looked up by GUID in the active shared parameter file;
+  if not found they are exported to a 'pyEXPORT' group first so they can be imported.
+  Parameters with formulas are highlighted and can be filtered out.
+  Works only in the Family Editor.
+author: Kent + Copilot
+highlight: False

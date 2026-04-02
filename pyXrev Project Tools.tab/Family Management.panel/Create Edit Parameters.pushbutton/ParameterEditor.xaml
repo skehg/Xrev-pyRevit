@@ -1,0 +1,283 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Parameter Editor"
+    Height="720" Width="1240"
+    MinHeight="620" MinWidth="1100"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize">
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="560" MinWidth="420"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="*" MinWidth="400"/>
+            </Grid.ColumnDefinitions>
+
+            <GridSplitter Grid.Column="1"
+                          Width="8"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          Background="Transparent"
+                          Cursor="SizeWE"
+                          ResizeDirection="Columns"
+                          ResizeBehavior="PreviousAndNext"
+                          ShowsPreview="True"/>
+
+            <Border Grid.Column="0" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4" Padding="10">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0 0 0 8">
+                        <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0 0 6 0"/>
+                        <TextBox x:Name="txtSearch"
+                                 Width="210"
+                                 Height="24"
+                                 VerticalAlignment="Center"
+                                 TextChanged="on_search_changed"
+                                 ToolTip="Filter by name or formula"/>
+                        <TextBlock Text="Group:" VerticalAlignment="Center" Margin="12 0 6 0"/>
+                        <ComboBox x:Name="cmbGroupFilter"
+                                  Width="170"
+                                  Height="24"
+                                  VerticalAlignment="Center"
+                                  SelectionChanged="on_group_filter_changed"
+                                  ToolTip="Filter list by parameter group"/>
+                    </StackPanel>
+
+                    <ListView x:Name="lstParameters" Grid.Row="1" SelectionChanged="on_param_selected">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="Name" Width="160" DisplayMemberBinding="{Binding Name}"/>
+                                <GridViewColumn Header="Group" Width="110" DisplayMemberBinding="{Binding GroupLabel}"/>
+                                <GridViewColumn Header="Value" Width="120" DisplayMemberBinding="{Binding Value}"/>
+                                <GridViewColumn Header="Formula" Width="200" DisplayMemberBinding="{Binding Formula}"/>
+                                <GridViewColumn Header="Inst/Type" Width="68" DisplayMemberBinding="{Binding InstanceTypeLabel}"/>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </Grid>
+            </Border>
+
+            <TabControl Grid.Column="2">
+
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <!-- TAB 1: Edit Existing Parameter                         -->
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <TabItem Header="Edit Existing Parameter">
+                    <Grid Margin="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Parameter:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0 0 0 8">
+                            <TextBlock x:Name="txtSelectedParamName" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0 0 10 0"/>
+                            <Button x:Name="btnDuplicateParameter" Content="Duplicate" Width="80" Height="26" Click="on_duplicate_parameter" Margin="0 0 6 0"/>
+                            <Button x:Name="btnDeleteParameter" Content="Delete" Width="70" Height="26" Click="on_delete_parameter"/>
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Group:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0 0 0 8">
+                            <ComboBox x:Name="cmbEditGroup" Width="210" Height="26" Margin="0 0 8 0"/>
+                            <Button x:Name="btnApplyParamSettings" Content="Apply" Width="70" Height="26" Click="on_apply_param_settings"/>
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Data Type:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0 0 0 8">
+                            <TextBlock x:Name="txtSelectedParamDataType" Margin="0 0 10 0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="txtInstanceType" VerticalAlignment="Center" FontStyle="Italic" Foreground="#666666"/>
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Current Value:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0 0 0 8">
+                            <TextBox x:Name="txtSelectedParamValue" Width="260" Height="26" Margin="0 0 8 0"
+                                     ToolTip="Edit current type value. Supports number, integer, yes/no, string, and element name/id for ElementId parameters."/>
+                            <Button x:Name="btnApplyValue" Content="Apply Value" Width="95" Height="26" Click="on_apply_value"/>
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Rename To:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0 0 0 8">
+                            <TextBox x:Name="txtRenameTo" Width="260" Height="26" Margin="0 0 8 0"/>
+                            <Button x:Name="btnRenameParameter" Content="Rename" Width="90" Height="26" Click="on_rename_parameter"/>
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Formula:" VerticalAlignment="Top" Margin="0 2 8 0"/>
+                        <Grid Grid.Row="5" Grid.Column="1">
+                            <TextBox x:Name="txtFormula"
+                                     MinHeight="110"
+                                     VerticalAlignment="Stretch"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     TextChanged="on_formula_changed"
+                                     SelectionChanged="on_formula_selection_changed"
+                                     PreviewKeyDown="on_formula_keydown"
+                                     ToolTip="Type formula. Suggestions appear automatically from parameter names."/>
+                            <Popup x:Name="popupSuggestions"
+                                   PlacementTarget="{Binding ElementName=txtFormula}"
+                                   Placement="Bottom"
+                                   StaysOpen="False"
+                                   AllowsTransparency="True">
+                                <Border BorderBrush="#B5B5B5" BorderThickness="1" Background="White" CornerRadius="2">
+                                    <ListBox x:Name="lstSuggestions"
+                                             Width="320"
+                                             MaxHeight="190"
+                                             MouseDoubleClick="on_suggestion_double_click"/>
+                                </Border>
+                            </Popup>
+                        </Grid>
+
+                        <TextBlock Grid.Row="6" Grid.Column="1" x:Name="txtFormulaBracketStatus" TextWrapping="Wrap" Foreground="#6A6A6A" Margin="0 4 0 0"
+                                   Text=""/>
+
+                        <TextBlock Grid.Row="7" Grid.Column="1" TextWrapping="Wrap" Foreground="#6A6A6A" Margin="0 4 0 0"
+                                   Text="Autocomplete suggests parameter names while typing. Brackets and quotes auto-close."/>
+
+                        <StackPanel Grid.Row="8" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0 10 0 0">
+                            <Button x:Name="btnClearFormula" Content="Clear Formula" Width="100" Height="28" Margin="0 0 8 0" Click="on_clear_formula"/>
+                            <Button x:Name="btnApplyFormula" Content="Apply Formula" Width="110" Height="28" Click="on_apply_formula"/>
+                        </StackPanel>
+                    </Grid>
+                </TabItem>
+
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <!-- TAB 2: Create New Parameter                            -->
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <TabItem Header="Create New Parameter">
+                    <Grid Margin="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Name:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <TextBox x:Name="txtNewName" Grid.Row="0" Grid.Column="1" Height="26" Margin="0 0 0 8"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Parameter Type:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <ComboBox x:Name="cmbNewType" Grid.Row="1" Grid.Column="1" Height="26" Margin="0 0 0 8"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Group:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <ComboBox x:Name="cmbNewGroup" Grid.Row="2" Grid.Column="1" Height="26" Margin="0 0 0 8"/>
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Options:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0 0 0 8">
+                            <CheckBox x:Name="chkNewInstance" Content="Instance parameter" IsChecked="True" Margin="0 0 16 0"/>
+                            <CheckBox x:Name="chkNewShared" Content="Shared parameter" Checked="on_new_shared_changed" Unchecked="on_new_shared_changed"/>
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Shared definition:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <ComboBox x:Name="cmbSharedDefinition" Grid.Row="4" Grid.Column="1" Height="26" Margin="0 0 0 8" SelectionChanged="on_shared_def_selected"/>
+
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Initial value:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <TextBox x:Name="txtNewInitialValue" Grid.Row="5" Grid.Column="1" Height="26" Margin="0 0 0 8" ToolTip="Optional. Applied to current family type right after creation."/>
+
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Initial formula:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <TextBox x:Name="txtNewFormula" Grid.Row="6" Grid.Column="1" Height="26" Margin="0 0 0 8" ToolTip="Optional. Applied after parameter creation."/>
+
+                        <TextBlock Grid.Row="7" Grid.Column="1" Foreground="#6A6A6A" TextWrapping="Wrap" Margin="0 0 0 8"
+                                   Text="Initial value supports number, integer, yes/no, string, and name lookup for Material/ElementId parameters."/>
+
+                        <StackPanel Grid.Row="9" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0 12 0 0">
+                            <Button x:Name="btnCreateParameter" Content="Create Parameter" Width="130" Height="30" Click="on_create_parameter"/>
+                        </StackPanel>
+                    </Grid>
+                </TabItem>
+
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <!-- TAB 3: Sort Parameters                                 -->
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <TabItem Header="Sort Parameters">
+                    <Grid Margin="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" TextWrapping="Wrap" Foreground="#6A6A6A" Margin="0 0 0 10"
+                                   Text="Sort parameters alphabetically within selected groups. Unselected groups keep their current order."/>
+
+                        <GroupBox Grid.Row="1" Header="Sort Mode" Margin="0 0 0 6" Padding="8 4 8 6">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="rbSortNameOnly" Content="Name only" IsChecked="True" Margin="0 0 16 0"/>
+                                <RadioButton x:Name="rbSortTypeThenInstance" Content="Type then Instance"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <GroupBox Grid.Row="2" Header="Sort Direction" Margin="0 0 0 8" Padding="8 4 8 6">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="rbSortAscending" Content="Ascending (A–Z)" IsChecked="True" Margin="0 0 16 0"/>
+                                <RadioButton x:Name="rbSortDescending" Content="Descending (Z–A)"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <DockPanel Grid.Row="3" Margin="0 0 0 4">
+                            <TextBlock Text="Parameter groups:" FontWeight="SemiBold" VerticalAlignment="Center" DockPanel.Dock="Left"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                                <Button Content="All" Width="44" Height="22" Margin="0 0 4 0" Click="on_sort_select_all"/>
+                                <Button Content="None" Width="44" Height="22" Click="on_sort_select_none"/>
+                            </StackPanel>
+                        </DockPanel>
+
+                        <Border Grid.Row="4" BorderBrush="#CFCFCF" BorderThickness="1" CornerRadius="3" Margin="0 0 0 8">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="6">
+                                <StackPanel x:Name="sortGroupPanel"/>
+                            </ScrollViewer>
+                        </Border>
+
+                        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="Refresh Groups" Width="110" Height="28" Margin="0 0 8 0" Click="on_sort_refresh"/>
+                            <Button Content="Sort" Width="80" Height="28" Click="on_sort_apply"/>
+                        </StackPanel>
+                    </Grid>
+                </TabItem>
+
+            </TabControl>
+        </Grid>
+
+        <Border Grid.Row="1" Background="#F7F7F7" CornerRadius="3" Padding="8" Margin="0 10 0 0">
+            <DockPanel>
+                <TextBlock x:Name="txtStatus" Foreground="#2A2A2A" Text="Ready." TextWrapping="Wrap" DockPanel.Dock="Left"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                    <Button Content="Close" Width="88" Height="28" Margin="10 0 0 0" Click="on_close"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>
