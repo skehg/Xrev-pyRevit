@@ -93,6 +93,16 @@
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="Parameter:" VerticalAlignment="Center" Margin="0 0 8 8"/>
                         <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0 0 0 8">
                             <TextBlock x:Name="txtSelectedParamName" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0 0 10 0"/>
+                            <Border BorderBrush="#90CAF9" BorderThickness="1" CornerRadius="3" Margin="0 0 12 0" VerticalAlignment="Center">
+                                <Button x:Name="btnToggleInstanceType"
+                                        Height="22" Padding="8 0" MinWidth="68"
+                                        Click="on_toggle_instance_type"
+                                        Background="#E3F2FD" BorderThickness="0"
+                                        Foreground="#1565C0"
+                                        FontSize="11"
+                                        Cursor="Hand"
+                                        ToolTip="Click to toggle between Instance and Type. Not available for shared parameters."/>
+                            </Border>
                             <Button x:Name="btnDuplicateParameter" Content="Duplicate" Width="80" Height="26" Click="on_duplicate_parameter" Margin="0 0 6 0"/>
                             <Button x:Name="btnDeleteParameter" Content="Delete" Width="70" Height="26" Click="on_delete_parameter"/>
                         </StackPanel>
@@ -104,10 +114,7 @@
                         </StackPanel>
 
                         <TextBlock Grid.Row="2" Grid.Column="0" Text="Data Type:" VerticalAlignment="Center" Margin="0 0 8 8"/>
-                        <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0 0 0 8">
-                            <TextBlock x:Name="txtSelectedParamDataType" Margin="0 0 10 0" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="txtInstanceType" VerticalAlignment="Center" FontStyle="Italic" Foreground="#666666"/>
-                        </StackPanel>
+                        <TextBlock x:Name="txtSelectedParamDataType" Grid.Row="2" Grid.Column="1" Margin="0 0 0 8" VerticalAlignment="Center"/>
 
                         <TextBlock Grid.Row="3" Grid.Column="0" Text="Current Value:" VerticalAlignment="Center" Margin="0 0 8 8"/>
                         <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0 0 0 8">
@@ -174,8 +181,10 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
@@ -186,31 +195,62 @@
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="Name:" VerticalAlignment="Center" Margin="0 0 8 8"/>
                         <TextBox x:Name="txtNewName" Grid.Row="0" Grid.Column="1" Height="26" Margin="0 0 0 8"/>
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Parameter Type:" VerticalAlignment="Center" Margin="0 0 8 8"/>
-                        <ComboBox x:Name="cmbNewType" Grid.Row="1" Grid.Column="1" Height="26" Margin="0 0 0 8"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Discipline:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <ComboBox x:Name="cmbNewDiscipline" Grid.Row="1" Grid.Column="1" Height="26" Margin="0 0 0 8"
+                                  SelectionChanged="on_new_discipline_changed"/>
 
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Group:" VerticalAlignment="Center" Margin="0 0 8 8"/>
-                        <ComboBox x:Name="cmbNewGroup" Grid.Row="2" Grid.Column="1" Height="26" Margin="0 0 0 8"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Type of Parameter:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <ComboBox x:Name="cmbNewType" Grid.Row="2" Grid.Column="1" Height="26" Margin="0 0 0 8"/>
 
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Options:" VerticalAlignment="Center" Margin="0 0 8 8"/>
-                        <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0 0 0 8">
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Group:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <ComboBox x:Name="cmbNewGroup" Grid.Row="3" Grid.Column="1" Height="26" Margin="0 0 0 8"/>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Options:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0 0 0 8">
                             <CheckBox x:Name="chkNewInstance" Content="Instance parameter" IsChecked="True" Margin="0 0 16 0"/>
                             <CheckBox x:Name="chkNewShared" Content="Shared parameter" Checked="on_new_shared_changed" Unchecked="on_new_shared_changed"/>
                         </StackPanel>
 
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Shared definition:" VerticalAlignment="Center" Margin="0 0 8 8"/>
-                        <ComboBox x:Name="cmbSharedDefinition" Grid.Row="4" Grid.Column="1" Height="26" Margin="0 0 0 8" SelectionChanged="on_shared_def_selected"/>
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Shared definition:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <ComboBox x:Name="cmbSharedDefinition" Grid.Row="5" Grid.Column="1" Height="26" Margin="0 0 0 8" SelectionChanged="on_shared_def_selected"/>
 
-                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Initial value:" VerticalAlignment="Center" Margin="0 0 8 8"/>
-                        <TextBox x:Name="txtNewInitialValue" Grid.Row="5" Grid.Column="1" Height="26" Margin="0 0 0 8" ToolTip="Optional. Applied to current family type right after creation."/>
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Initial value:" VerticalAlignment="Center" Margin="0 0 8 8"/>
+                        <TextBox x:Name="txtNewInitialValue" Grid.Row="6" Grid.Column="1" Height="26" Margin="0 0 0 8" ToolTip="Optional. Applied to current family type right after creation."/>
 
-                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Initial formula:" VerticalAlignment="Center" Margin="0 0 8 8"/>
-                        <TextBox x:Name="txtNewFormula" Grid.Row="6" Grid.Column="1" Height="26" Margin="0 0 0 8" ToolTip="Optional. Applied after parameter creation."/>
+                        <TextBlock Grid.Row="7" Grid.Column="0" Text="Initial formula:" VerticalAlignment="Top" Margin="0 2 8 0"/>
+                        <Grid Grid.Row="7" Grid.Column="1" Margin="0 0 0 8">
+                            <TextBox x:Name="txtNewFormula"
+                                     MinHeight="60"
+                                     VerticalAlignment="Stretch"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     TextChanged="on_new_formula_changed"
+                                     SelectionChanged="on_new_formula_selection_changed"
+                                     PreviewKeyDown="on_new_formula_keydown"
+                                     ToolTip="Type formula. Suggestions appear automatically from parameter names."/>
+                            <Popup x:Name="popupNewSuggestions"
+                                   PlacementTarget="{Binding ElementName=txtNewFormula}"
+                                   Placement="Bottom"
+                                   StaysOpen="False"
+                                   AllowsTransparency="True">
+                                <Border BorderBrush="#B5B5B5" BorderThickness="1" Background="White" CornerRadius="2">
+                                    <ListBox x:Name="lstNewSuggestions"
+                                             Width="320"
+                                             MaxHeight="190"
+                                             MouseDoubleClick="on_new_suggestion_double_click"/>
+                                </Border>
+                            </Popup>
+                        </Grid>
 
-                        <TextBlock Grid.Row="7" Grid.Column="1" Foreground="#6A6A6A" TextWrapping="Wrap" Margin="0 0 0 8"
-                                   Text="Initial value supports number, integer, yes/no, string, and name lookup for Material/ElementId parameters."/>
+                        <TextBlock x:Name="txtNewFormulaBracketStatus" Grid.Row="8" Grid.Column="1" TextWrapping="Wrap" Foreground="#6A6A6A" Margin="0 4 0 0"
+                                   Text=""/>
 
-                        <StackPanel Grid.Row="9" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0 12 0 0">
+                        <TextBlock Grid.Row="9" Grid.Column="1" Foreground="#6A6A6A" TextWrapping="Wrap" Margin="0 4 0 0"
+                                   Text="Initial value supports number, integer, yes/no, string, and name lookup for Material/ElementId parameters. Autocomplete suggests parameter names in the formula."/>
+
+                        <StackPanel Grid.Row="11" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0 10 0 0">
+                            <Button Content="Clear Formula" Width="100" Height="30" Margin="0 0 8 0" Click="on_clear_new_formula"/>
                             <Button x:Name="btnCreateParameter" Content="Create Parameter" Width="130" Height="30" Click="on_create_parameter"/>
                         </StackPanel>
                     </Grid>

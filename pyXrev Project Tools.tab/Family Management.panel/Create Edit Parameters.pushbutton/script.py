@@ -80,14 +80,22 @@ class ParameterEditorWindow(forms.WPFWindow):
         self._autocomplete_names = []
         self._shared_options = []
         self._active_token_range = None
+        self._active_new_token_range = None
 
         self.lstParameters.ItemsSource = self._filtered_items
 
-        self._type_options = _build_type_options(self.fm)
+        self._all_types_by_discipline = _build_all_type_options_by_discipline()
+        self._discipline_options = sorted(self._all_types_by_discipline.keys())
         self._group_options = _build_group_options(self.fm)
         self._shared_options = _build_shared_definition_options()
 
-        self._bind_combo_options(self.cmbNewType, self._type_options)
+        self.cmbNewDiscipline.ItemsSource = self._discipline_options
+        _default_disc = "Common" if "Common" in self._discipline_options else (
+            self._discipline_options[0] if self._discipline_options else None
+        )
+        if _default_disc:
+            self.cmbNewDiscipline.SelectedItem = _default_disc
+        self._bind_combo_options(self.cmbNewType, self._all_types_by_discipline.get(_default_disc or "", []))
         self._bind_combo_options(self.cmbNewGroup, self._group_options)
         self._bind_combo_options(self.cmbSharedDefinition, self._shared_options)
         self._bind_combo_options(self.cmbEditGroup, self._group_options)
@@ -191,7 +199,8 @@ class ParameterEditorWindow(forms.WPFWindow):
             self.txtRenameTo.Text = ""
             self.txtFormula.Text = ""
             self.txtFormulaBracketStatus.Text = ""
-            self.txtInstanceType.Text = ""
+            self.btnToggleInstanceType.Content = ""
+            self.btnToggleInstanceType.IsEnabled = False
             self.txtFormula.BorderBrush = self._brush("#B5B5B5")
             self.txtFormula.BorderThickness = self._uniform_thickness(1)
             return
@@ -202,7 +211,8 @@ class ParameterEditorWindow(forms.WPFWindow):
         self.txtRenameTo.Text = item.Name
         self.txtFormula.Text = item.Formula or ""
         self._set_edit_group_selection(item.Param)
-        self.txtInstanceType.Text = item.InstanceTypeLabel
+        self.btnToggleInstanceType.Content = item.InstanceTypeLabel
+        self.btnToggleInstanceType.IsEnabled = not item.IsShared
         self._update_formula_bracket_feedback()
 
     def _set_edit_group_selection(self, family_param):
@@ -222,6 +232,7 @@ class ParameterEditorWindow(forms.WPFWindow):
     def _set_shared_mode(self, is_shared):
         self.chkNewShared.IsChecked = is_shared
         self.cmbSharedDefinition.IsEnabled = is_shared
+        self.cmbNewDiscipline.IsEnabled = not is_shared
         self.cmbNewType.IsEnabled = not is_shared
         self.txtNewName.IsEnabled = not is_shared
 
@@ -314,6 +325,124 @@ class ParameterEditorWindow(forms.WPFWindow):
         self.txtFormula.SelectionStart = caret_pos
         self.txtFormula.SelectionLength = 0
         return True
+
+    # ── Create-tab formula helpers (parallel to edit-tab versions above) ─────
+
+    def _render_new_suggestions(self):
+        txt = self.txtNewFormula.Text or ""
+        rng = self._selected_token_range(txt, self.txtNewFormula.CaretIndex)
+        self._active_new_token_range = rng
+
+        if rng is None:
+            self.popupNewSuggestions.IsOpen = False
+            return
+
+        token = txt[rng[0]:rng[1]].strip()
+        if not token:
+            self.popupNewSuggestions.IsOpen = False
+            return
+
+        token_lower = token.lower()
+        prefix = []
+        contains = []
+        for name in self._autocomplete_names:
+            if not name:
+                continue
+            low = name.lower()
+            if low.startswith(token_lower):
+                prefix.append(name)
+            elif token_lower in low:
+                contains.append(name)
+
+        suggestions = (prefix + contains)[:40]
+        self.lstNewSuggestions.ItemsSource = suggestions
+        if suggestions:
+            self.lstNewSuggestions.SelectedIndex = 0
+            self.popupNewSuggestions.IsOpen = True
+        else:
+            self.popupNewSuggestions.IsOpen = False
+
+    def _commit_new_suggestion(self):
+        if not self.popupNewSuggestions.IsOpen:
+            return False
+
+        suggestion = self.lstNewSuggestions.SelectedItem
+        if suggestion is None:
+            return False
+
+        text = self.txtNewFormula.Text or ""
+        rng = self._active_new_token_range or self._selected_token_range(text, self.txtNewFormula.CaretIndex)
+        if rng is None:
+            return False
+
+        new_text = text[:rng[0]] + suggestion + text[rng[1]:]
+        caret_pos = rng[0] + len(suggestion)
+        self.txtNewFormula.Text = new_text
+        self.popupNewSuggestions.IsOpen = False
+
+        self.txtNewFormula.Focus()
+        self.txtNewFormula.CaretIndex = caret_pos
+        self.txtNewFormula.SelectionStart = caret_pos
+        self.txtNewFormula.SelectionLength = 0
+        return True
+
+    def _set_new_formula_feedback(self, message, color_hex, border_hex=None, border_size=1):
+        self.txtNewFormulaBracketStatus.Text = message or ""
+        self.txtNewFormulaBracketStatus.Foreground = self._brush(color_hex)
+
+        if border_hex is None:
+            border_hex = "#B5B5B5"
+        self.txtNewFormula.BorderBrush = self._brush(border_hex)
+        self.txtNewFormula.BorderThickness = self._uniform_thickness(border_size)
+
+    def _update_new_formula_bracket_feedback(self):
+        text = self.txtNewFormula.Text or ""
+        caret = self.txtNewFormula.CaretIndex
+        bracket_chars = set(["(", ")", "[", "]", "{", "}"])
+
+        near_idx = None
+        if caret > 0 and text[caret - 1] in bracket_chars:
+            near_idx = caret - 1
+        elif caret < len(text) and text[caret] in bracket_chars:
+            near_idx = caret
+
+        if near_idx is not None:
+            ch = text[near_idx]
+            match_idx = self._find_matching_bracket(text, near_idx)
+            if match_idx is not None:
+                color = self._bracket_color_hex(ch)
+                self._set_new_formula_feedback(
+                    "Bracket pair '{}' matched (positions {} and {}).".format(ch, near_idx + 1, match_idx + 1),
+                    color,
+                    color,
+                    2,
+                )
+                return
+            self._set_new_formula_feedback(
+                "Bracket '{}' at position {} has no matching pair.".format(ch, near_idx + 1),
+                "#B00020",
+                "#B00020",
+                2,
+            )
+            return
+
+        unmatched = self._find_first_unmatched_bracket(text)
+        if unmatched is not None:
+            kind, ch, idx = unmatched
+            if kind == "mismatched_closer":
+                msg = "Mismatched closing bracket '{}' at position {}.".format(ch, idx + 1)
+            elif kind == "unmatched_closer":
+                msg = "Unmatched closing bracket '{}' at position {}.".format(ch, idx + 1)
+            else:
+                msg = "Unmatched opening bracket '{}' at position {}.".format(ch, idx + 1)
+            self._set_new_formula_feedback(msg, "#B00020", "#B00020", 2)
+            return
+
+        if not text:
+            self._set_new_formula_feedback("", "#6A6A6A", "#B5B5B5", 1)
+            return
+
+        self._set_new_formula_feedback("Brackets are balanced.", "#6A6A6A", "#B5B5B5", 1)
 
     def _insert_pair(self, opener, closer):
         tb = self.txtFormula
@@ -542,6 +671,79 @@ class ParameterEditorWindow(forms.WPFWindow):
     def on_suggestion_double_click(self, sender, args):
         self._commit_selected_suggestion()
 
+    # ── Create-tab formula event handlers ────────────────────────────────────
+
+    def on_new_formula_changed(self, sender, args):
+        self._render_new_suggestions()
+        self._update_new_formula_bracket_feedback()
+
+    def on_new_formula_selection_changed(self, sender, args):
+        self._update_new_formula_bracket_feedback()
+
+    def on_new_formula_keydown(self, sender, args):
+        if args.Key == Key.Down and self.popupNewSuggestions.IsOpen:
+            idx = self.lstNewSuggestions.SelectedIndex
+            if idx < self.lstNewSuggestions.Items.Count - 1:
+                self.lstNewSuggestions.SelectedIndex = idx + 1
+                self.lstNewSuggestions.ScrollIntoView(self.lstNewSuggestions.SelectedItem)
+            args.Handled = True
+            return
+
+        if args.Key == Key.Up and self.popupNewSuggestions.IsOpen:
+            idx = self.lstNewSuggestions.SelectedIndex
+            if idx > 0:
+                self.lstNewSuggestions.SelectedIndex = idx - 1
+                self.lstNewSuggestions.ScrollIntoView(self.lstNewSuggestions.SelectedItem)
+            args.Handled = True
+            return
+
+        if args.Key == Key.Enter and self.popupNewSuggestions.IsOpen:
+            if self._commit_new_suggestion():
+                args.Handled = True
+            return
+
+        if args.Key == Key.Tab and self.popupNewSuggestions.IsOpen:
+            if self._commit_new_suggestion():
+                args.Handled = True
+            return
+
+        if args.Key == Key.Escape and self.popupNewSuggestions.IsOpen:
+            self.popupNewSuggestions.IsOpen = False
+            args.Handled = True
+
+    def on_new_suggestion_double_click(self, sender, args):
+        self._commit_new_suggestion()
+
+    def on_clear_new_formula(self, sender, args):
+        self.txtNewFormula.Text = ""
+
+    def on_toggle_instance_type(self, sender, args):
+        item = self._selected_parameter_item()
+        if item is None:
+            self._set_status("Select a parameter first.", "error")
+            return
+
+        if item.IsShared:
+            self._set_status("Shared parameters cannot have their instance/type changed.", "error")
+            return
+
+        source_param = item.Param
+        is_currently_instance = bool(getattr(source_param, "IsInstance", False))
+
+        try:
+            with revit.Transaction("Change Parameter Scope"):
+                if is_currently_instance:
+                    self.fm.MakeType(source_param)
+                else:
+                    self.fm.MakeInstance(source_param)
+        except Exception as ex:
+            self._set_status("Toggle failed: {}".format(ex), "error")
+            return
+
+        new_scope = "Type" if is_currently_instance else "Instance"
+        self._set_status("Changed '{}' to {}.".format(item.Name, new_scope), "ok")
+        self._reload_parameter_items(select_name=item.Name)
+
     def on_apply_param_settings(self, sender, args):
         item = self._selected_parameter_item()
         if item is None:
@@ -560,14 +762,43 @@ class ParameterEditorWindow(forms.WPFWindow):
             self._set_status("Parameter is already in that group.", "neutral")
             return
 
-        move_method = getattr(self.fm, "MoveParameter", None)
-        if not callable(move_method):
-            self._set_status("Group move requires Revit 2023 or later.", "error")
-            return
+        def _do_move():
+            # 1. MoveParameter (Revit 2023+)
+            m = getattr(self.fm, "MoveParameter", None)
+            if callable(m):
+                m(source_param, target_group)
+                return
+
+            # 2. SetParameterGroup via getattr
+            m = getattr(self.fm, "SetParameterGroup", None)
+            if callable(m):
+                m(source_param, target_group)
+                return
+
+            # 3. SetParameterGroup via .NET reflection on FamilyManager
+            try:
+                m = self.fm.GetType().GetMethod("SetParameterGroup")
+                if m is not None:
+                    m.Invoke(self.fm, System.Array[System.Object]([source_param, target_group]))
+                    return
+            except Exception:
+                pass
+
+            # 4. InternalDefinition.ParameterGroup property via reflection
+            try:
+                defn = source_param.Definition
+                prop = defn.GetType().GetProperty("ParameterGroup")
+                if prop is not None and prop.CanWrite:
+                    prop.SetValue(defn, target_group, None)
+                    return
+            except Exception:
+                pass
+
+            raise Exception("Group move is not available in this Revit version.")
 
         try:
             with revit.Transaction("Move Parameter Group"):
-                move_method(source_param, target_group)
+                _do_move()
         except Exception as ex:
             self._set_status("Move group failed: {}".format(ex), "error")
             return
@@ -784,6 +1015,13 @@ class ParameterEditorWindow(forms.WPFWindow):
 
     def on_new_shared_changed(self, sender, args):
         self._set_shared_mode(bool(self.chkNewShared.IsChecked))
+
+    def on_new_discipline_changed(self, sender, args):
+        disc = self.cmbNewDiscipline.SelectedItem
+        if disc is None:
+            return
+        type_options = self._all_types_by_discipline.get(str(disc), [])
+        self._bind_combo_options(self.cmbNewType, type_options)
 
     def on_shared_def_selected(self, sender, args):
         if not bool(self.chkNewShared.IsChecked):
@@ -1135,6 +1373,89 @@ def _get_data_type(definition):
         return getattr(definition, "ParameterType", None)
 
 
+def _camel_to_words(s):
+    s = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", s)
+    s = re.sub(r"(?<=[A-Z]{2})(?=[A-Z][a-z])", " ", s)
+    return s.strip()
+
+
+_STRUCTURAL_PT_NAMES = frozenset((
+    "LoadClassification", "Mass", "Force", "LinearForce", "AreaForce",
+    "Moment", "LinearMoment", "Stress", "UnitWeight", "Weight",
+    "WeightPerUnitLength", "MomentOfInertia", "WarpingConstant",
+    "SectionModulus", "SectionArea", "SectionDimension",
+    "ReinforcementCover", "ReinforcementArea", "ReinforcementAreaperUnitLength",
+    "ReinforcementSpacing", "ReinforcementVolume", "BarDiameter",
+    "CrackWidth", "DisplacementDeflection", "Energy",
+    "StructuralFrequency", "Period", "Pulsation", "Acceleration",
+    "LinearMass", "LinearMassMomentOfInertia",
+    "AreaSpringCoefficient", "LineSpringCoefficient", "PointSpringCoefficient",
+    "RotationalLineSpringCoefficient", "RotationalPointSpringCoefficient",
+))
+
+_ENERGY_PT_NAMES = frozenset((
+    "ThermalResistance", "ThermalMass", "ThermalConductivity",
+    "SpecificHeat", "SpecificHeatOfVaporization", "Permeability",
+    "IsothermalMoistureCapacity", "DiffusionCoefficient",
+    "HeatTransferCoefficient", "AirflowDensity",
+    "ThermalGradientCoefficientForMoistureCapacity", "MoistureDiffusivity",
+))
+
+_PT_LABEL_OVERRIDES = {
+    "Boolean": "Yes/No",
+    "YesNo": "Yes/No",
+    "FamilyType": "<Family Type...>",
+    "MultilineText": "Multiline Text",
+    "MassDensity": "Mass Density",
+    "URL": "URL",
+    "HVACAirflowDividedByVolume": "Airflow / Volume",
+    "HVACCoolingLoadDividedByArea": "Cooling Load / Area",
+    "HVACCoolingLoadDividedByVolume": "Cooling Load / Volume",
+    "HVACHeatingLoadDividedByArea": "Heating Load / Area",
+    "HVACHeatingLoadDividedByVolume": "Heating Load / Volume",
+    "DisplacementDeflection": "Displacement/Deflection",
+    "ReinforcementAreaperUnitLength": "Reinforcement Area per Unit Length",
+    "StructuralFrequency": "Frequency",
+}
+
+
+def _pt_discipline_and_label(name):
+    discipline = "Common"
+    raw = name
+    for prefix, disc in (("HVAC", "HVAC"), ("Electrical", "Electrical"), ("Piping", "Piping")):
+        if name.startswith(prefix) and len(name) > len(prefix):
+            discipline = disc
+            raw = name[len(prefix):]
+            break
+    else:
+        if name in _STRUCTURAL_PT_NAMES:
+            discipline = "Structural"
+        elif name in _ENERGY_PT_NAMES:
+            discipline = "Energy"
+    label = _PT_LABEL_OVERRIDES.get(name) or _camel_to_words(raw)
+    return discipline, label
+
+
+def _build_all_type_options_by_discipline():
+    result = {}
+    try:
+        for pt in System.Enum.GetValues(ParameterType):
+            name = str(pt)
+            if "invalid" in name.lower():
+                continue
+            discipline, label = _pt_discipline_and_label(name)
+            if not label:
+                continue
+            if discipline not in result:
+                result[discipline] = []
+            result[discipline].append(OptionItem(label, pt))
+    except Exception:
+        pass
+    for d in result:
+        result[d].sort(key=lambda o: o.Label.lower())
+    return result
+
+
 def _build_type_options(fm):
     options = []
     seen = set()
@@ -1175,35 +1496,31 @@ def _build_type_options(fm):
 
 
 def _build_group_options(fm):
+    # Enumerate the full BuiltInParameterGroup enum and keep only entries that
+    # LabelUtils can resolve to a proper human-readable label.  This produces
+    # the same list shown in Revit's Family Types dialog without needing to know
+    # which groups are valid for the family's category.
     options = []
     seen = set()
 
-    for fp in _get_family_parameters(fm):
-        try:
-            group = fp.Definition.ParameterGroup
-        except Exception:
-            continue
-
-        key = str(group)
-        if key in seen:
-            continue
-        seen.add(key)
-
-        label = _label_for_group(group)
-        options.append(OptionItem(label, group))
-
-    if options:
-        options.sort(key=lambda o: o.Label.lower())
-        return options
-
     try:
         for group in System.Enum.GetValues(BuiltInParameterGroup):
-            if str(group) == "INVALID":
+            key = str(group)
+            if key in seen:
                 continue
-            options.append(OptionItem(_label_for_group(group), group))
+            try:
+                label = LabelUtils.GetLabelFor(group)
+            except Exception:
+                continue
+            if not label or label == key:
+                # No real label — internal/invalid group
+                continue
+            seen.add(key)
+            options.append(OptionItem(label, group))
     except Exception:
         pass
 
+    options.sort(key=lambda o: o.Label.lower())
     return options
 
 
