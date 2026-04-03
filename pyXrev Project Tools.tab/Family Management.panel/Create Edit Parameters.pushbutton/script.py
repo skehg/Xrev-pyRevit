@@ -27,6 +27,7 @@ from Autodesk.Revit.DB import (
     UnitUtils,
 )
 from pyrevit import forms, revit
+from formula_highlight import FormulaEditorHighlightMixin
 from family_param_utils import (
     find_directly_used_params,
     find_formula_referencing_params,
@@ -70,7 +71,7 @@ class ParameterItem(object):
         self.Value = _read_value_for_display(current_type, family_param)
 
 
-class ParameterEditorWindow(forms.WPFWindow):
+class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
     def __init__(self, family_manager):
         forms.WPFWindow.__init__(self, "ParameterEditor.xaml")
         self.fm = family_manager
@@ -81,6 +82,7 @@ class ParameterEditorWindow(forms.WPFWindow):
         self._shared_options = []
         self._active_token_range = None
         self._active_new_token_range = None
+        self._highlighting = False
 
         self.lstParameters.ItemsSource = self._filtered_items
 
@@ -197,7 +199,7 @@ class ParameterEditorWindow(forms.WPFWindow):
             self.txtSelectedParamDataType.Text = ""
             self.txtSelectedParamValue.Text = ""
             self.txtRenameTo.Text = ""
-            self.txtFormula.Text = ""
+            self._formula_set_text("")
             self.txtFormulaBracketStatus.Text = ""
             self.btnToggleInstanceType.Content = ""
             self.btnToggleInstanceType.IsEnabled = False
@@ -209,7 +211,7 @@ class ParameterEditorWindow(forms.WPFWindow):
         self.txtSelectedParamDataType.Text = item.DataTypeLabel
         self.txtSelectedParamValue.Text = item.Value
         self.txtRenameTo.Text = item.Name
-        self.txtFormula.Text = item.Formula or ""
+        self._formula_set_text(item.Formula or "")
         self._set_edit_group_selection(item.Param)
         self.btnToggleInstanceType.Content = item.InstanceTypeLabel
         self.btnToggleInstanceType.IsEnabled = not item.IsShared
@@ -263,8 +265,8 @@ class ParameterEditorWindow(forms.WPFWindow):
         return (left, right)
 
     def _render_suggestions(self):
-        txt = self.txtFormula.Text or ""
-        rng = self._selected_token_range(txt, self.txtFormula.CaretIndex)
+        txt = self._formula_get_text()
+        rng = self._selected_token_range(txt, self._formula_get_caret())
         self._active_token_range = rng
 
         if rng is None:
@@ -309,28 +311,25 @@ class ParameterEditorWindow(forms.WPFWindow):
         if suggestion is None:
             return False
 
-        text = self.txtFormula.Text or ""
-        rng = self._active_token_range or self._selected_token_range(text, self.txtFormula.CaretIndex)
+        text = self._formula_get_text()
+        rng = self._active_token_range or self._selected_token_range(text, self._formula_get_caret())
         if rng is None:
             return False
 
         new_text = text[:rng[0]] + suggestion + text[rng[1]:]
         caret_pos = rng[0] + len(suggestion)
-        self.txtFormula.Text = new_text
+        self._formula_set_text(new_text)
         self.popupSuggestions.IsOpen = False
 
-        # Keep typing flow smooth: focus formula box and place caret after inserted suggestion.
         self.txtFormula.Focus()
-        self.txtFormula.CaretIndex = caret_pos
-        self.txtFormula.SelectionStart = caret_pos
-        self.txtFormula.SelectionLength = 0
+        self._formula_set_caret(caret_pos)
         return True
 
     # ── Create-tab formula helpers (parallel to edit-tab versions above) ─────
 
     def _render_new_suggestions(self):
-        txt = self.txtNewFormula.Text or ""
-        rng = self._selected_token_range(txt, self.txtNewFormula.CaretIndex)
+        txt = self._rtb_get_text(self.txtNewFormula)
+        rng = self._selected_token_range(txt, self._rtb_get_caret(self.txtNewFormula))
         self._active_new_token_range = rng
 
         if rng is None:
@@ -370,20 +369,18 @@ class ParameterEditorWindow(forms.WPFWindow):
         if suggestion is None:
             return False
 
-        text = self.txtNewFormula.Text or ""
-        rng = self._active_new_token_range or self._selected_token_range(text, self.txtNewFormula.CaretIndex)
+        text = self._rtb_get_text(self.txtNewFormula)
+        rng = self._active_new_token_range or self._selected_token_range(text, self._rtb_get_caret(self.txtNewFormula))
         if rng is None:
             return False
 
         new_text = text[:rng[0]] + suggestion + text[rng[1]:]
         caret_pos = rng[0] + len(suggestion)
-        self.txtNewFormula.Text = new_text
+        self._rtb_set_text(self.txtNewFormula, new_text)
         self.popupNewSuggestions.IsOpen = False
 
         self.txtNewFormula.Focus()
-        self.txtNewFormula.CaretIndex = caret_pos
-        self.txtNewFormula.SelectionStart = caret_pos
-        self.txtNewFormula.SelectionLength = 0
+        self._rtb_set_caret(self.txtNewFormula, caret_pos)
         return True
 
     def _set_new_formula_feedback(self, message, color_hex, border_hex=None, border_size=1):
@@ -393,11 +390,10 @@ class ParameterEditorWindow(forms.WPFWindow):
         if border_hex is None:
             border_hex = "#B5B5B5"
         self.txtNewFormula.BorderBrush = self._brush(border_hex)
-        self.txtNewFormula.BorderThickness = self._uniform_thickness(border_size)
 
     def _update_new_formula_bracket_feedback(self):
-        text = self.txtNewFormula.Text or ""
-        caret = self.txtNewFormula.CaretIndex
+        text = self._rtb_get_text(self.txtNewFormula)
+        caret = self._rtb_get_caret(self.txtNewFormula)
         bracket_chars = set(["(", ")", "[", "]", "{", "}"])
 
         near_idx = None
@@ -445,23 +441,20 @@ class ParameterEditorWindow(forms.WPFWindow):
         self._set_new_formula_feedback("Brackets are balanced.", "#6A6A6A", "#B5B5B5", 1)
 
     def _insert_pair(self, opener, closer):
-        tb = self.txtFormula
-        text = tb.Text or ""
-        start = tb.SelectionStart
-        length = tb.SelectionLength
+        text = self._formula_get_text()
+        start = self._formula_get_selection_start()
+        length = self._formula_get_selection_length()
 
         if length > 0:
             selected = text[start:start + length]
             new_text = text[:start] + opener + selected + closer + text[start + length:]
-            tb.Text = new_text
-            tb.SelectionStart = start + length + 2
-            tb.SelectionLength = 0
+            self._formula_set_text(new_text)
+            self._formula_select(start + length + 2, 0)
             return
 
         new_text = text[:start] + opener + closer + text[start:]
-        tb.Text = new_text
-        tb.SelectionStart = start + 1
-        tb.SelectionLength = 0
+        self._formula_set_text(new_text)
+        self._formula_select(start + 1, 0)
 
     def _find_matching_bracket(self, text, index):
         if index < 0 or index >= len(text):
@@ -544,11 +537,10 @@ class ParameterEditorWindow(forms.WPFWindow):
         if border_hex is None:
             border_hex = "#B5B5B5"
         self.txtFormula.BorderBrush = self._brush(border_hex)
-        self.txtFormula.BorderThickness = self._uniform_thickness(border_size)
 
     def _update_formula_bracket_feedback(self):
-        text = self.txtFormula.Text or ""
-        caret = self.txtFormula.CaretIndex
+        text = self._formula_get_text()
+        caret = self._formula_get_caret()
         bracket_chars = set(["(", ")", "[", "]", "{", "}"])
 
         near_idx = None
@@ -627,10 +619,16 @@ class ParameterEditorWindow(forms.WPFWindow):
         self.popupSuggestions.IsOpen = False
 
     def on_formula_changed(self, sender, args):
+        if self._highlighting:
+            return
+        self._apply_syntax_highlights_to(self.txtFormula)
         self._render_suggestions()
         self._update_formula_bracket_feedback()
 
     def on_formula_selection_changed(self, sender, args):
+        if self._highlighting:
+            return
+        self._apply_syntax_highlights_to(self.txtFormula)
         self._update_formula_bracket_feedback()
 
     def on_formula_preview_textinput(self, sender, args):
@@ -674,10 +672,16 @@ class ParameterEditorWindow(forms.WPFWindow):
     # ── Create-tab formula event handlers ────────────────────────────────────
 
     def on_new_formula_changed(self, sender, args):
+        if self._highlighting:
+            return
+        self._apply_syntax_highlights_to(self.txtNewFormula)
         self._render_new_suggestions()
         self._update_new_formula_bracket_feedback()
 
     def on_new_formula_selection_changed(self, sender, args):
+        if self._highlighting:
+            return
+        self._apply_syntax_highlights_to(self.txtNewFormula)
         self._update_new_formula_bracket_feedback()
 
     def on_new_formula_keydown(self, sender, args):
@@ -715,7 +719,7 @@ class ParameterEditorWindow(forms.WPFWindow):
         self._commit_new_suggestion()
 
     def on_clear_new_formula(self, sender, args):
-        self.txtNewFormula.Text = ""
+        self._rtb_set_text(self.txtNewFormula, "")
 
     def on_toggle_instance_type(self, sender, args):
         item = self._selected_parameter_item()
@@ -938,7 +942,7 @@ class ParameterEditorWindow(forms.WPFWindow):
             self._set_status("Select a parameter first.", "error")
             return
 
-        formula_text = (self.txtFormula.Text or "").strip()
+        formula_text = self._formula_get_text().strip()
         formula_value = formula_text if formula_text else None
 
         txn = None
@@ -963,7 +967,7 @@ class ParameterEditorWindow(forms.WPFWindow):
         self._reload_parameter_items(select_name=item.Name)
 
     def on_clear_formula(self, sender, args):
-        self.txtFormula.Text = ""
+        self._formula_set_text("")
 
     def on_rename_parameter(self, sender, args):
         item = self._selected_parameter_item()
@@ -1065,7 +1069,7 @@ class ParameterEditorWindow(forms.WPFWindow):
             return
 
         initial_value_text = (self.txtNewInitialValue.Text or "").strip()
-        initial_formula_text = (self.txtNewFormula.Text or "").strip()
+        initial_formula_text = self._rtb_get_text(self.txtNewFormula).strip()
 
         try:
             with revit.Transaction("Create Family Parameter"):
@@ -1086,7 +1090,7 @@ class ParameterEditorWindow(forms.WPFWindow):
             return
 
         self.txtNewInitialValue.Text = ""
-        self.txtNewFormula.Text = ""
+        self._rtb_set_text(self.txtNewFormula, "")
         if not is_shared:
             self.txtNewName.Text = ""
 

@@ -131,16 +131,25 @@
 
                         <TextBlock Grid.Row="5" Grid.Column="0" Text="Formula:" VerticalAlignment="Top" Margin="0 2 8 0"/>
                         <Grid Grid.Row="5" Grid.Column="1">
-                            <TextBox x:Name="txtFormula"
+                            <RichTextBox x:Name="txtFormula"
                                      MinHeight="110"
                                      VerticalAlignment="Stretch"
-                                     AcceptsReturn="True"
-                                     TextWrapping="Wrap"
+                                     AcceptsReturn="False"
+                                     AcceptsTab="False"
                                      VerticalScrollBarVisibility="Auto"
                                      TextChanged="on_formula_changed"
                                      SelectionChanged="on_formula_selection_changed"
                                      PreviewKeyDown="on_formula_keydown"
-                                     ToolTip="Type formula. Suggestions appear automatically from parameter names."/>
+                                     PreviewTextInput="on_formula_preview_textinput"
+                                     FontFamily="Consolas"
+                                     FontSize="13"
+                                     ToolTip="Type formula. Suggestions appear automatically from parameter names.">
+                                <RichTextBox.Resources>
+                                    <Style TargetType="Paragraph">
+                                        <Setter Property="Margin" Value="0"/>
+                                    </Style>
+                                </RichTextBox.Resources>
+                            </RichTextBox>
                             <Popup x:Name="popupSuggestions"
                                    PlacementTarget="{Binding ElementName=txtFormula}"
                                    Placement="Bottom"
@@ -219,16 +228,24 @@
 
                         <TextBlock Grid.Row="7" Grid.Column="0" Text="Initial formula:" VerticalAlignment="Top" Margin="0 2 8 0"/>
                         <Grid Grid.Row="7" Grid.Column="1" Margin="0 0 0 8">
-                            <TextBox x:Name="txtNewFormula"
+                            <RichTextBox x:Name="txtNewFormula"
                                      MinHeight="60"
                                      VerticalAlignment="Stretch"
-                                     AcceptsReturn="True"
-                                     TextWrapping="Wrap"
+                                     AcceptsReturn="False"
+                                     AcceptsTab="False"
                                      VerticalScrollBarVisibility="Auto"
                                      TextChanged="on_new_formula_changed"
                                      SelectionChanged="on_new_formula_selection_changed"
                                      PreviewKeyDown="on_new_formula_keydown"
-                                     ToolTip="Type formula. Suggestions appear automatically from parameter names."/>
+                                     FontFamily="Consolas"
+                                     FontSize="13"
+                                     ToolTip="Type formula. Suggestions appear automatically from parameter names.">
+                                <RichTextBox.Resources>
+                                    <Style TargetType="Paragraph">
+                                        <Setter Property="Margin" Value="0"/>
+                                    </Style>
+                                </RichTextBox.Resources>
+                            </RichTextBox>
                             <Popup x:Name="popupNewSuggestions"
                                    PlacementTarget="{Binding ElementName=txtNewFormula}"
                                    Placement="Bottom"
