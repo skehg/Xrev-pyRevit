@@ -59,6 +59,12 @@ class OptionItem(object):
         return self.Label
 
 
+class ReorderItem(object):
+    def __init__(self, fp):
+        self.Param = fp
+        self.Name = _param_name(fp)
+
+
 class ParameterItem(object):
     def __init__(self, family_param, current_type):
         self.Param = family_param
@@ -106,7 +112,11 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
         self._reload_parameter_items(select_name=None)
         self._sort_group_checkboxes = []
         self._populate_sort_groups()
+        self._reorder_items = ObservableCollection[object]()
+        self.lstReorderParams.ItemsSource = self._reorder_items
+        self._populate_reorder_groups()
         self._restore_window_position()
+        self._restore_column_layout()
         self._set_status("Ready.", "neutral")
 
     def _bind_combo_options(self, combo, options):
@@ -156,6 +166,8 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
         if selected is None:
             selected = self._all_items[0]
         self.lstParameters.SelectedItem = selected
+        if hasattr(self, '_reorder_items'):
+            self._populate_reorder_groups()
 
     def _apply_parameter_filter(self):
         search = (self.txtSearch.Text or "").strip().lower()
@@ -734,6 +746,127 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
         source_param = item.Param
         is_currently_instance = bool(getattr(source_param, "IsInstance", False))
 
+        # ── Instance → Type: check if the formula references Instance params ──
+        if is_currently_instance:
+            chain, children_of = _build_instance_to_type_chain(self.fm, item.Name)
+            if len(chain) > 1:
+                dependent_names = []
+                for level in chain[1:]:
+                    dependent_names.extend(level)
+
+                tree_text = _format_chain_tree(item.Name, children_of)
+                num_levels = len(chain) - 1
+                msg = (
+                    u"Converting '{}' from Instance to Type requires converting {} dependent "
+                    u"Instance parameter(s) across {} level(s) first.\n\n"
+                    u"{}\n"
+                    u"Conversion order: deepest level first, then '{}' last."
+                ).format(
+                    item.Name,
+                    len(dependent_names),
+                    num_levels,
+                    tree_text,
+                    item.Name,
+                )
+
+                choice = forms.alert(
+                    msg,
+                    title=u"Instance-to-Type: {} dependent param(s), {} level(s)".format(
+                        len(dependent_names), num_levels
+                    ),
+                    options=["Convert All", "Cancel"],
+                )
+
+                if choice != "Convert All":
+                    self._set_status("Toggle cancelled.", "neutral")
+                    return
+
+                # Convert deepest level first, then shallower, finally the target.
+                ordered_names = []
+                for level in reversed(chain[1:]):
+                    ordered_names.extend(level)
+                ordered_names.append(item.Name)
+
+                # Each MakeType must be its own committed transaction so Revit
+                # sees the updated scope before validating the next parameter's formula.
+                for name in ordered_names:
+                    try:
+                        with revit.Transaction(u"Convert '{}' to Type".format(name)):
+                            live_fps = {_param_name(fp): fp for fp in _get_family_parameters(self.fm)}
+                            fp = live_fps.get(name)
+                            if fp is not None:
+                                self.fm.MakeType(fp)
+                    except Exception as ex:
+                        self._set_status(
+                            u"Failed converting '{}' to Type: {}".format(name, ex), "error"
+                        )
+                        return
+
+                converted = u", ".join(u"'{}'".format(n) for n in ordered_names)
+                self._set_status(u"Converted to Type: {}.".format(converted), "ok")
+                self._reload_parameter_items(select_name=item.Name)
+                return
+
+        # ── Type → Instance: check for dependent Type parameters ─────────────
+        if not is_currently_instance:
+            chain, children_of = _build_type_to_instance_chain(self.fm, item.Name)
+            if len(chain) > 1:
+                # Flatten all dependent levels (excluding chain[0] which is the target)
+                dependent_names = []
+                for level in chain[1:]:
+                    dependent_names.extend(level)
+
+                tree_text = _format_chain_tree(item.Name, children_of)
+                num_levels = len(chain) - 1
+                msg = (
+                    u"Converting '{}' from Type to Instance requires converting {} dependent "
+                    u"Type parameter(s) across {} level(s) first.\n\n"
+                    u"{}\n"
+                    u"Conversion order: deepest level first, then '{}' last."
+                ).format(
+                    item.Name,
+                    len(dependent_names),
+                    num_levels,
+                    tree_text,
+                    item.Name,
+                )
+
+                choice = forms.alert(
+                    msg,
+                    title=u"Type-to-Instance: {} dependent param(s), {} level(s)".format(
+                        len(dependent_names), num_levels
+                    ),
+                    options=["Convert All", "Cancel"],
+                )
+
+                if choice != "Convert All":
+                    self._set_status("Toggle cancelled.", "neutral")
+                    return
+
+                # Convert deepest level first, then shallower, finally the target.
+                ordered_names = []
+                for level in reversed(chain[1:]):
+                    ordered_names.extend(level)
+                ordered_names.append(item.Name)
+
+                fp_by_name = {_param_name(fp): fp for fp in _get_family_parameters(self.fm)}
+
+                try:
+                    with revit.Transaction("Convert Parameters to Instance"):
+                        for name in ordered_names:
+                            fp = fp_by_name.get(name)
+                            if fp is not None:
+                                self.fm.MakeInstance(fp)
+                except Exception as ex:
+                    self._set_status("Convert all failed: {}".format(ex), "error")
+                    return
+
+                converted = u", ".join(u"'{}'".format(n) for n in ordered_names)
+                self._set_status(u"Converted to Instance: {}.".format(converted), "ok")
+                self._reload_parameter_items(select_name=item.Name)
+                return
+
+        # ── Normal single toggle ──────────────────────────────────────────────
         try:
             with revit.Transaction("Change Parameter Scope"):
                 if is_currently_instance:
@@ -1176,6 +1309,177 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
         self._reload_parameter_items(select_name=selected_name)
         self._populate_sort_groups()
 
+    # ── Reorder Parameters tab ────────────────────────────────────────────
+
+    def _populate_reorder_groups(self):
+        """Rebuild the group dropdown in the Reorder Parameters tab."""
+        if not _sort_supports_reorder(self.fm):
+            self.btnReorderApply.IsEnabled = False
+            self.txtReorderApiWarning.Text = (
+                u"FamilyManager.ReorderParameters is not available in this Revit version."
+            )
+            self.txtReorderApiWarning.Visibility = System.Windows.Visibility.Visible
+            return
+        self.btnReorderApply.IsEnabled = True
+        self.txtReorderApiWarning.Visibility = System.Windows.Visibility.Collapsed
+
+        all_params = _sort_get_current_order(self.fm)
+        if not all_params:
+            return
+
+        grouped, labels = _sort_group_parameters(all_params)
+        options = sorted(
+            [OptionItem(labels[k], k) for k in grouped],
+            key=lambda o: o.Label.lower()
+        )
+        self.cmbReorderGroup.ItemsSource = options
+        self.cmbReorderGroup.DisplayMemberPath = "Label"
+        self.cmbReorderGroup.SelectedValuePath = "Value"
+
+        # Default to Dimensions; fall back to first item
+        target = next((o for o in options if o.Label.lower() == "dimensions"), None)
+        if target is None and options:
+            target = options[0]
+        if target is not None:
+            self.cmbReorderGroup.SelectedItem = target
+        self._populate_reorder_list()
+
+    def _populate_reorder_list(self):
+        """Fill lstReorderParams with the current group's params in Revit order."""
+        self._reorder_items.Clear()
+        selected_option = self.cmbReorderGroup.SelectedItem
+        if selected_option is None:
+            return
+        group_key = selected_option.Value
+
+        all_params = _sort_get_current_order(self.fm)
+        if not all_params:
+            return
+
+        grouped, _ = _sort_group_parameters(all_params)
+        for fp in grouped.get(group_key, []):
+            self._reorder_items.Add(ReorderItem(fp))
+
+    def on_reorder_group_changed(self, sender, args):
+        self._populate_reorder_list()
+
+    def on_reorder_refresh(self, sender, args):
+        self._populate_reorder_groups()
+
+    def _reorder_move(self, action):
+        idx = self.lstReorderParams.SelectedIndex
+        count = self._reorder_items.Count
+        if idx < 0 or count < 2:
+            return
+        item = self._reorder_items[idx]
+        if action == "top":
+            new_idx = 0
+        elif action == "up":
+            new_idx = max(0, idx - 1)
+        elif action == "down":
+            new_idx = min(count - 1, idx + 1)
+        else:  # bottom
+            new_idx = count - 1
+        if new_idx == idx:
+            return
+        self._reorder_items.RemoveAt(idx)
+        self._reorder_items.Insert(new_idx, item)
+        self.lstReorderParams.SelectedIndex = new_idx
+        self.lstReorderParams.ScrollIntoView(self._reorder_items[new_idx])
+
+    def on_reorder_top(self, sender, args):
+        self._reorder_move("top")
+
+    def on_reorder_up(self, sender, args):
+        self._reorder_move("up")
+
+    def on_reorder_down(self, sender, args):
+        self._reorder_move("down")
+
+    def on_reorder_bottom(self, sender, args):
+        self._reorder_move("bottom")
+
+    def on_reorder_apply(self, sender, args):
+        selected_option = self.cmbReorderGroup.SelectedItem
+        if selected_option is None:
+            self._set_status(u"Select a group to reorder.", "error")
+            return
+        group_key = selected_option.Value
+
+        if self._reorder_items.Count == 0:
+            self._set_status(u"No parameters in the selected group.", "neutral")
+            return
+
+        all_params = _sort_get_current_order(self.fm)
+        if all_params is None:
+            self._set_status(u"GetParameters API unavailable.", "error")
+            return
+
+        grouped, _ = _sort_group_parameters(all_params)
+        group_names_new = {ri.Name for ri in self._reorder_items}
+
+        # Build the new full order: replace the selected group's slice with
+        # the user's arranged order; all other groups keep their positions.
+        new_order_fps = []
+        reorder_iter = iter(list(self._reorder_items))
+        for fp in all_params:
+            from sort_param_utils import get_group_info as _get_group_info
+            key, _ = _get_group_info(fp)
+            if key == group_key:
+                try:
+                    new_order_fps.append(next(reorder_iter).Param)
+                except StopIteration:
+                    pass  # shouldn't happen
+            else:
+                new_order_fps.append(fp)
+
+        from System.Collections.Generic import List as _DotNetList
+        from Autodesk.Revit.DB import FamilyParameter as _FamilyParameter
+        dotnet_list = _DotNetList[_FamilyParameter]()
+        for fp in new_order_fps:
+            dotnet_list.Add(fp)
+
+        try:
+            with revit.Transaction(u"Reorder Parameters"):
+                self.fm.ReorderParameters(dotnet_list)
+        except Exception as ex:
+            self._set_status(u"Reorder failed: {}".format(ex), "error")
+            return
+
+        self._set_status(
+            u"Reordered '{}' group ({} parameter(s)).".format(
+                selected_option.Label, self._reorder_items.Count
+            ), "ok"
+        )
+        self._populate_reorder_list()  # refresh from new Revit order to confirm
+
+    def _restore_column_layout(self):
+        from pyrevit import script as _pyscript
+        from System.Windows.Controls import DataGridLength
+        cfg = _pyscript.get_config()
+        try:
+            col_layout = getattr(cfg, 'col_layout', None)
+            if not col_layout:
+                return
+            saved = []
+            for part in col_layout.split(u","):
+                if u":" in part:
+                    header, width = part.rsplit(u":", 1)
+                    saved.append((header.strip(), float(width)))
+            col_by_header = {str(c.Header): c for c in self.lstParameters.Columns}
+            # Restore widths first
+            for header, width in saved:
+                col = col_by_header.get(header)
+                if col is not None:
+                    col.Width = DataGridLength(width)
+            # Restore display order (assign left-to-right; WPF adjusts others)
+            for new_idx, (header, _) in enumerate(saved):
+                col = col_by_header.get(header)
+                if col is not None and col.DisplayIndex != new_idx:
+                    col.DisplayIndex = new_idx
+        except Exception:
+            pass
+
     def _restore_window_position(self):
         from pyrevit import script as _pyscript
         from System.Windows import SystemParameters
@@ -1215,6 +1519,13 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
         cfg.win_top = self.Top
         cfg.win_width = self.Width
         cfg.win_height = self.Height
+        try:
+            ordered = sorted(self.lstParameters.Columns, key=lambda c: c.DisplayIndex)
+            cfg.col_layout = u",".join(
+                u"{}:{:.0f}".format(c.Header, c.ActualWidth) for c in ordered
+            )
+        except Exception:
+            pass
         _pyscript.save_config()
         self.Close()
 
@@ -1745,6 +2056,128 @@ def _formula_references_parameter(formula_text, parameter_name):
         return re.search(pattern, formula_text, flags=re.IGNORECASE) is not None
     except Exception:
         return parameter_name.lower() in formula_text.lower()
+
+
+def _build_type_to_instance_chain(fm, start_name, max_depth=5):
+    """
+    Walk the formula-reference graph from *start_name* up to *max_depth* levels,
+    collecting Type parameters whose formulas transitively reference it.
+
+    Returns (chain, children_of):
+      chain[0] = [start_name]
+      chain[1] = Type params whose formula directly references start_name
+      chain[2] = Type params whose formula references anything in chain[1]
+      ...
+      children_of: dict mapping each name -> list of names that directly reference it
+
+    If no Type params reference the target, chain has only one element.
+    """
+    all_fps = list(_get_family_parameters(fm))
+    chain = [[start_name]]
+    seen = {start_name}
+    children_of = {start_name: []}
+
+    for _ in range(max_depth):
+        current_names = chain[-1]
+        next_level = []
+        for fp in all_fps:
+            name = _param_name(fp)
+            if name in seen:
+                continue
+            if bool(getattr(fp, "IsInstance", False)):
+                continue  # already instance — no conflict
+            formula = _safe_formula(fp)
+            if not formula:
+                continue
+            for ref_name in current_names:
+                if _formula_references_parameter(formula, ref_name):
+                    next_level.append(name)
+                    seen.add(name)
+                    children_of.setdefault(ref_name, []).append(name)
+                    children_of.setdefault(name, [])
+                    break
+        if not next_level:
+            break
+        chain.append(next_level)
+
+    return chain, children_of
+
+
+def _build_instance_to_type_chain(fm, start_name, max_depth=5):
+    """
+    Walk the formula-reference graph DOWNWARD from *start_name* up to *max_depth* levels,
+    collecting Instance parameters that the target's formula (transitively) references.
+    These must be converted to Type before *start_name* can become Type.
+
+    Returns (chain, children_of):
+      chain[0] = [start_name]
+      chain[1] = Instance params directly referenced in start_name's formula
+      chain[2] = Instance params referenced in chain[1] params' formulas
+      ...
+      children_of: dict mapping each name -> list of Instance names it directly references
+
+    If start_name's formula references no Instance params, chain has only one element.
+    """
+    all_fps = list(_get_family_parameters(fm))
+    fp_by_name = {_param_name(fp): fp for fp in all_fps}
+
+    chain = [[start_name]]
+    seen = {start_name}
+    children_of = {start_name: []}
+
+    for _ in range(max_depth):
+        current_names = chain[-1]
+        next_level = []
+        for parent_name in current_names:
+            parent_fp = fp_by_name.get(parent_name)
+            if parent_fp is None:
+                continue
+            formula = _safe_formula(parent_fp)
+            if not formula:
+                continue
+            for fp in all_fps:
+                name = _param_name(fp)
+                if name in seen:
+                    continue
+                if not bool(getattr(fp, "IsInstance", False)):
+                    continue  # only Instance params block a Type conversion
+                if _formula_references_parameter(formula, name):
+                    next_level.append(name)
+                    seen.add(name)
+                    children_of.setdefault(parent_name, []).append(name)
+                    children_of.setdefault(name, [])
+        if not next_level:
+            break
+        chain.append(next_level)
+
+    return chain, children_of
+
+
+def _format_chain_tree(start_name, children_of):
+    """Render the dependency tree as a recursive box-draw hierarchy.
+
+    Example (Param1 -> [Param2, Param5], Param2 -> [Param3], Param3 -> [Param4], Param5 -> [Param6]):
+        'Param1'
+        |- 'Param2'
+        |  |- 'Param3'
+        |  |  |- 'Param4'
+        |- 'Param5'
+           |- 'Param6'
+    """
+    lines = []
+    lines.append(u"'{}'".format(start_name))
+
+    def _render_children(parent, continuation):
+        children = children_of.get(parent, [])
+        for i, child in enumerate(children):
+            is_last = (i == len(children) - 1)
+            connector  = u"\u2514\u2500 " if is_last else u"\u251c\u2500 "
+            child_cont = continuation + (u"   " if is_last else u"\u2502  ")
+            lines.append(u"{}{}'{}'".format(continuation, connector, child))
+            _render_children(child, child_cont)
+
+    _render_children(start_name, u"")
+    return u"\n".join(lines)
 
 
 def _copy_current_parameter_value(family_manager, source_param, target_param):

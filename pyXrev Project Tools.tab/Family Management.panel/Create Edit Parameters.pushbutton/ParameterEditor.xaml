@@ -53,17 +53,25 @@
                                   ToolTip="Filter list by parameter group"/>
                     </StackPanel>
 
-                    <ListView x:Name="lstParameters" Grid.Row="1" SelectionChanged="on_param_selected">
-                        <ListView.View>
-                            <GridView>
-                                <GridViewColumn Header="Name" Width="160" DisplayMemberBinding="{Binding Name}"/>
-                                <GridViewColumn Header="Group" Width="110" DisplayMemberBinding="{Binding GroupLabel}"/>
-                                <GridViewColumn Header="Value" Width="120" DisplayMemberBinding="{Binding Value}"/>
-                                <GridViewColumn Header="Formula" Width="200" DisplayMemberBinding="{Binding Formula}"/>
-                                <GridViewColumn Header="Inst/Type" Width="68" DisplayMemberBinding="{Binding InstanceTypeLabel}"/>
-                            </GridView>
-                        </ListView.View>
-                    </ListView>
+                    <DataGrid x:Name="lstParameters" Grid.Row="1" SelectionChanged="on_param_selected"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserReorderColumns="True"
+                              CanUserResizeColumns="True"
+                              CanUserSortColumns="False"
+                              SelectionMode="Single"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="None"
+                              RowHeaderWidth="0"
+                              BorderThickness="0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Name"      Width="160" Binding="{Binding Name}"/>
+                            <DataGridTextColumn Header="Group"     Width="110" Binding="{Binding GroupLabel}"/>
+                            <DataGridTextColumn Header="Value"     Width="120" Binding="{Binding Value}"/>
+                            <DataGridTextColumn Header="Formula"   Width="200" Binding="{Binding Formula}"/>
+                            <DataGridTextColumn Header="Inst/Type" Width="68"  Binding="{Binding InstanceTypeLabel}"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
                 </Grid>
             </Border>
 
@@ -93,15 +101,23 @@
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="Parameter:" VerticalAlignment="Center" Margin="0 0 8 8"/>
                         <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0 0 0 8">
                             <TextBlock x:Name="txtSelectedParamName" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0 0 10 0"/>
-                            <Border BorderBrush="#90CAF9" BorderThickness="1" CornerRadius="3" Margin="0 0 12 0" VerticalAlignment="Center">
+                            <Border x:Name="borderToggleInstanceType"
+                                    BorderBrush="#90CAF9" BorderThickness="1"
+                                    Background="#E3F2FD"
+                                    CornerRadius="11" Margin="0 0 12 0" VerticalAlignment="Center">
                                 <Button x:Name="btnToggleInstanceType"
                                         Height="22" Padding="8 0" MinWidth="68"
                                         Click="on_toggle_instance_type"
-                                        Background="#E3F2FD" BorderThickness="0"
                                         Foreground="#1565C0"
                                         FontSize="11"
                                         Cursor="Hand"
-                                        ToolTip="Click to toggle between Instance and Type. Not available for shared parameters."/>
+                                        ToolTip="Click to toggle between Instance and Type. Not available for shared parameters.">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
                             </Border>
                             <Button x:Name="btnDuplicateParameter" Content="Duplicate" Width="80" Height="26" Click="on_duplicate_parameter" Margin="0 0 6 0"/>
                             <Button x:Name="btnDeleteParameter" Content="Delete" Width="70" Height="26" Click="on_delete_parameter"/>
@@ -322,6 +338,59 @@
                             <Button Content="Refresh Groups" Width="110" Height="28" Margin="0 0 8 0" Click="on_sort_refresh"/>
                             <Button Content="Sort" Width="80" Height="28" Click="on_sort_apply"/>
                         </StackPanel>
+                    </Grid>
+                </TabItem>
+
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <!-- TAB 4: Reorder Parameters                              -->
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <TabItem Header="Reorder Parameters">
+                    <Grid Margin="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Row 0: group picker -->
+                        <DockPanel Grid.Row="0" Margin="0 0 0 6">
+                            <TextBlock Text="Group:" VerticalAlignment="Center" Margin="0 0 8 0" DockPanel.Dock="Left"/>
+                            <Button Content="Refresh" Width="64" Height="24" DockPanel.Dock="Right"
+                                    Click="on_reorder_refresh"/>
+                            <ComboBox x:Name="cmbReorderGroup" Height="24" Margin="0 0 6 0"
+                                      SelectionChanged="on_reorder_group_changed"/>
+                        </DockPanel>
+
+                        <!-- Row 1: parameter list -->
+                        <Border Grid.Row="1" BorderBrush="#CFCFCF" BorderThickness="1" CornerRadius="3" Margin="0 0 0 6">
+                            <ListBox x:Name="lstReorderParams"
+                                     SelectionMode="Single"
+                                     DisplayMemberPath="Name"
+                                     BorderThickness="0"
+                                     Padding="4"/>
+                        </Border>
+
+                        <!-- Row 2: move buttons -->
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0 0 0 6">
+                            <Button x:Name="btnReorderTop"    Content="&#x25B2;&#x25B2; Top"    Width="72" Height="28" Margin="0 0 4 0" Click="on_reorder_top"    ToolTip="Move to top"/>
+                            <Button x:Name="btnReorderUp"     Content="&#x25B2; Up"             Width="64" Height="28" Margin="0 0 4 0" Click="on_reorder_up"     ToolTip="Move up one"/>
+                            <Button x:Name="btnReorderDown"   Content="&#x25BC; Down"           Width="64" Height="28" Margin="0 0 4 0" Click="on_reorder_down"   ToolTip="Move down one"/>
+                            <Button x:Name="btnReorderBottom" Content="&#x25BC;&#x25BC; Bottom" Width="72" Height="28" Click="on_reorder_bottom" ToolTip="Move to bottom"/>
+                        </StackPanel>
+
+                        <!-- Row 3: apply + API warning -->
+                        <DockPanel Grid.Row="3">
+                            <TextBlock x:Name="txtReorderApiWarning"
+                                       Foreground="#B00020" TextWrapping="Wrap"
+                                       Visibility="Collapsed"
+                                       DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0 0 8 0"/>
+                            <Button x:Name="btnReorderApply" Content="Apply Order"
+                                    Width="100" Height="28"
+                                    HorizontalAlignment="Right"
+                                    Click="on_reorder_apply"
+                                    DockPanel.Dock="Right"/>
+                        </DockPanel>
                     </Grid>
                 </TabItem>
 
