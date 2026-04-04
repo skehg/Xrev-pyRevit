@@ -39,14 +39,22 @@
                     <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0 0 0 8">
                         <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0 0 6 0"/>
                         <TextBox x:Name="txtSearch"
-                                 Width="210"
+                                 Width="160"
                                  Height="24"
                                  VerticalAlignment="Center"
                                  TextChanged="on_search_changed"
-                                 ToolTip="Filter by name or formula"/>
+                                 ToolTip="Filter by name (or name and formula when Formula is ticked)"/>
+                        <CheckBox x:Name="chkSearchFormula"
+                                  Content="Formula"
+                                  VerticalAlignment="Center"
+                                  Margin="6 0 0 0"
+                                  IsChecked="True"
+                                  Checked="on_search_formula_toggled"
+                                  Unchecked="on_search_formula_toggled"
+                                  ToolTip="Also search inside formula text"/>
                         <TextBlock Text="Group:" VerticalAlignment="Center" Margin="12 0 6 0"/>
                         <ComboBox x:Name="cmbGroupFilter"
-                                  Width="170"
+                                  Width="160"
                                   Height="24"
                                   VerticalAlignment="Center"
                                   SelectionChanged="on_group_filter_changed"

@@ -184,8 +184,11 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
 
             if group_filter and hay_group != group_filter:
                 continue
-            if search and search not in hay_name and search not in hay_formula:
-                continue
+            if search:
+                match_name = search in hay_name
+                match_formula = bool(self.chkSearchFormula.IsChecked) and search in hay_formula
+                if not match_name and not match_formula:
+                    continue
 
             self._filtered_items.Add(item)
 
@@ -621,6 +624,9 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
         return item.Value if item else None
 
     def on_search_changed(self, sender, args):
+        self._apply_parameter_filter()
+
+    def on_search_formula_toggled(self, sender, args):
         self._apply_parameter_filter()
 
     def on_group_filter_changed(self, sender, args):
