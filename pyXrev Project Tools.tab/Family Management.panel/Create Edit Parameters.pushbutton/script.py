@@ -28,6 +28,7 @@ from Autodesk.Revit.DB import (
 )
 from pyrevit import forms, revit
 from formula_highlight import FormulaEditorHighlightMixin
+from formula_analyzer import analyze_formula as _analyze_formula, replace_formula_subexpr as _replace_formula_subexpr
 from family_param_utils import (
     find_directly_used_params,
     find_formula_referencing_params,
@@ -63,6 +64,368 @@ class ReorderItem(object):
     def __init__(self, fp):
         self.Param = fp
         self.Name = _param_name(fp)
+        self.InstanceTypeLabel = "Instance" if bool(getattr(fp, "IsInstance", False)) else "Type"
+
+
+class FormulaAnalysisWindow(forms.WPFWindow):
+    """Comparison dialog showing original vs. simplified formula with colorized diff."""
+
+    def __init__(self, original, result, on_apply_cb,
+                 fm=None, current_item=None, all_items=None, autocomplete_names=None):
+        forms.WPFWindow.__init__(self, "FormulaAnalysis.xaml")
+        self._result = result
+        self._on_apply_cb = on_apply_cb
+        self._fm = fm
+        self._current_item = current_item
+        self._all_items = all_items or []
+        self._autocomplete_names = set(autocomplete_names or [])
+
+        # Import WPF inline types needed for colorized text
+        from System.Windows.Documents import Run
+        from System.Windows.Media import SolidColorBrush, Color
+
+        def _color(r, g, b):
+            return SolidColorBrush(Color.FromRgb(r, g, b))
+
+        _grey  = _color(0x2A, 0x2A, 0x2A)
+        _red   = _color(0xC6, 0x28, 0x28)
+        _green = _color(0x2E, 0x7D, 0x32)
+
+        def _populate(textblock, diff, highlight_kind, highlight_color):
+            textblock.Inlines.Clear()
+            space = Run(u" ")
+            for kind, tok in diff:
+                r = Run(tok)
+                if kind == highlight_kind:
+                    r.Foreground = highlight_color
+                else:
+                    r.Foreground = _grey
+                textblock.Inlines.Add(r)
+                textblock.Inlines.Add(Run(u" "))
+
+        diff = result.get('diff', [])
+        _populate(self.txtOriginalFormula,  diff, 'removed', _red)
+        _populate(self.txtSuggestedFormula, diff, 'added',   _green)
+
+        # Suggestions navigation
+        self._suggestions = result.get('suggestions', [])
+        self._suggestion_idx = 0
+        self._show_suggestion(0)
+
+        # Metrics
+        m = result.get('metrics', {})
+        if m:
+            self.txtMetrics.Text = (
+                u"Nodes: {}  |  Operator depth: {}  |  Unique parameters: {}".format(
+                    m.get('nodes', '-'), m.get('depth', '-'), m.get('unique_params', '-')
+                )
+            )
+
+        # Disable Apply when the simplified form is identical to the original
+        simplified = result.get('simplified', original)
+        self.btnApply.IsEnabled = (simplified != original)
+
+    def _show_suggestion(self, idx):
+        total = len(self._suggestions)
+        if total == 0:
+            self.txtSuggestionText.Text = u"No suggestions."
+            self.txtSuggestionCounter.Text = u"0 / 0"
+            self.btnPrevSuggestion.IsEnabled = False
+            self.btnNextSuggestion.IsEnabled = False
+            self.btnCopySuggestion.IsEnabled = False
+            return
+        sug = self._suggestions[idx]
+        self.txtSuggestionCounter.Text = u"{} / {}".format(idx + 1, total)
+        self.btnPrevSuggestion.IsEnabled = idx > 0
+        self.btnNextSuggestion.IsEnabled = idx < total - 1
+        self.btnCopySuggestion.IsEnabled = True
+        if isinstance(sug, dict) and sug.get('type') == 'repeated_subexpr':
+            self._render_repeated_subexpr(sug)
+        else:
+            self.pnlCreateReplace.Visibility = System.Windows.Visibility.Collapsed
+            self.txtSuggestionText.Inlines.Clear()
+            from System.Windows.Documents import Run
+            self.txtSuggestionText.Inlines.Add(Run(sug if isinstance(sug, str) else str(sug)))
+
+    def _render_repeated_subexpr(self, sug):
+        from System.Windows.Documents import Run, LineBreak
+        from System.Windows.Media import SolidColorBrush, Color, FontFamily
+        from System.Windows import FontWeights, FontStyles
+
+        def _col(r, g, b):
+            return SolidColorBrush(Color.FromRgb(r, g, b))
+
+        tb = self.txtSuggestionText
+        tb.Inlines.Clear()
+
+        # Header
+        hdr = Run(u"Repeated subexpression")
+        hdr.FontWeight = FontWeights.Bold
+        tb.Inlines.Add(hdr)
+        tb.Inlines.Add(LineBreak())
+
+        # Subexpr in monospace blue
+        expr = Run(u"  " + sug['subexpr'])
+        expr.FontFamily = FontFamily("Consolas")
+        expr.Foreground = _col(0x1A, 0x53, 0x7E)
+        tb.Inlines.Add(expr)
+        tb.Inlines.Add(LineBreak())
+        tb.Inlines.Add(LineBreak())
+
+        # Count in this formula
+        count_self = sug.get('count_self', 0)
+        tb.Inlines.Add(Run(u"  {} x in this parameter".format(count_self)))
+        tb.Inlines.Add(LineBreak())
+
+        # Whole matches
+        for pname, cnt in sorted(sug.get('whole_matches', {}).items()):
+            r = Run(u"  {} x as entire formula of parameter \"{}\"".format(cnt, pname))
+            r.Foreground = _col(0x2E, 0x7D, 0x32)
+            tb.Inlines.Add(r)
+            tb.Inlines.Add(LineBreak())
+
+        # Partial matches
+        for pname, cnt in sorted(sug.get('partial_matches', {}).items()):
+            r = Run(u"  {} x in formula of parameter \"{}\"".format(cnt, pname))
+            r.Foreground = _col(0x1A, 0x53, 0x7E)
+            tb.Inlines.Add(r)
+            tb.Inlines.Add(LineBreak())
+
+        # Advice
+        tb.Inlines.Add(LineBreak())
+        if sug.get('whole_matches'):
+            advice = u"Consider replacing all occurrences with the parameter name directly."
+        else:
+            advice = u"Consider extracting it to a dedicated intermediate parameter."
+        adv = Run(advice)
+        adv.Foreground = _col(0x5A, 0x5A, 0x5A)
+        adv.FontStyle = FontStyles.Italic
+        tb.Inlines.Add(adv)
+
+        # Populate and show Create & Replace panel
+        self.txtNewParamName.Text = self._suggest_subexpr_name(sug['subexpr'])
+        is_instance = self._infer_instance_scope(sug)
+        self.rbNewParamInstance.IsChecked = is_instance
+        self.rbNewParamType.IsChecked = not is_instance
+
+        # Populate data type combo
+        type_options = _build_type_options(self._fm) if self._fm else []
+        self.cmbNewDataType.ItemsSource = type_options
+        if type_options:
+            self.cmbNewDataType.SelectedIndex = 0
+        inferred_dt = _infer_subexpr_datatype(sug['subexpr'], self._all_items)
+        if inferred_dt is not None:
+            inferred_str = str(inferred_dt)
+            for i, opt in enumerate(type_options):
+                if str(opt.Value) == inferred_str:
+                    self.cmbNewDataType.SelectedIndex = i
+                    break
+
+        self.pnlCreateReplace.Visibility = System.Windows.Visibility.Visible
+
+    def _suggest_subexpr_name(self, subexpr_text):
+        """Derive a parameter name suggestion from the subexpression text."""
+        import re as _re
+        existing = {it.Name.lower() for it in self._all_items if it.Name}
+        _revit_fns = frozenset([
+            'if', 'and', 'or', 'not', 'sqrt', 'round', 'roundup', 'rounddown',
+            'abs', 'log', 'exp', 'sin', 'cos', 'tan',
+        ])
+        idents = [w for w in _re.findall(r'[A-Za-z_]\w*', subexpr_text)
+                  if w.lower() not in _revit_fns]
+        parts = idents[:2]
+        base = ('_'.join(p[:15] for p in parts) + '_Calc') if parts else 'Calculated'
+        name = base
+        i = 1
+        while name.lower() in existing:
+            name = '{}_{}'.format(base, i)
+            i += 1
+        return name
+
+    def _infer_instance_scope(self, sug):
+        """Return True (Instance) if any affected parameter is Instance, else False (Type)."""
+        if self._current_item and self._current_item.InstanceTypeLabel == 'Instance':
+            return True
+        affected_names = (list(sug.get('whole_matches', {}).keys()) +
+                          list(sug.get('partial_matches', {}).keys()))
+        for pname in affected_names:
+            for it in self._all_items:
+                if it.Name == pname and it.InstanceTypeLabel == 'Instance':
+                    return True
+        return False
+
+    def on_create_and_replace(self, sender, args):
+        sug = self._suggestions[self._suggestion_idx]
+        if not isinstance(sug, dict) or sug.get('type') != 'repeated_subexpr':
+            return
+
+        new_name = (self.txtNewParamName.Text or u'').strip()
+        if not new_name:
+            forms.alert(u'Please enter a parameter name.', title='Create & Replace')
+            return
+
+        existing = {it.Name.lower() for it in self._all_items if it.Name}
+        if new_name.lower() in existing:
+            forms.alert(
+                u"A parameter named '{}' already exists.".format(new_name),
+                title='Create & Replace'
+            )
+            return
+
+        rep_key = sug.get('rep_key')
+        if not rep_key:
+            forms.alert(u'Cannot determine subexpression key.', title='Create & Replace')
+            return
+
+        if self._current_item is None or self._fm is None:
+            forms.alert(u'No parameter context available.', title='Create & Replace')
+            return
+
+        dt_item = self.cmbNewDataType.SelectedItem
+        data_type = dt_item.Value if dt_item else None
+        if data_type is None:
+            forms.alert(u'Please select a data type for the new parameter.', title='Create & Replace')
+            return
+
+        is_instance = bool(self.rbNewParamInstance.IsChecked)
+        param_names = self._autocomplete_names
+        subexpr_text = sug['subexpr']
+
+        # Build list of ParameterItems whose formulas will be rewritten
+        affected = []
+        if self._current_item and self._current_item.Formula:
+            affected.append(self._current_item)
+        for pname in (list(sug.get('whole_matches', {}).keys()) +
+                      list(sug.get('partial_matches', {}).keys())):
+            for it in self._all_items:
+                if it.Name == pname and it.Formula and it not in affected:
+                    affected.append(it)
+
+        # Pre-compute new formulas (before opening the transaction)
+        new_formulas = {}
+        for it in affected:
+            try:
+                new_f = _replace_formula_subexpr(it.Formula, rep_key, new_name, param_names)
+                new_formulas[it.Name] = new_f
+            except Exception as ex:
+                forms.alert(
+                    u"Could not compute replacement formula for '{}':\n{}".format(it.Name, ex),
+                    title='Create & Replace'
+                )
+                return
+
+        # Dump diagnostics to a copyable pyRevit output window
+        from pyrevit import script as _pyscript
+        _out = _pyscript.get_output()
+        _out.print_md(u'## Create & Replace — diagnostics')
+        _out.print_md(u'**New parameter:** `{}`  \n**Subexpression formula:** `{}`'.format(
+            new_name, subexpr_text))
+        _out.print_md(u'### Rewritten formulas')
+        for _n, _f in new_formulas.items():
+            _out.print_md(u'**{}**  \n```\n{}\n```'.format(_n, _f))
+
+        # Transaction 1: create the new parameter and set its formula.
+        # Must be committed before Revit will accept it as a valid reference
+        # in other parameters' formulas.
+        txn = None
+        try:
+            txn = Transaction(doc, u'Create Subexpression Parameter')
+            txn.Start()
+            new_fp = self._fm.AddParameter(
+                new_name, BuiltInParameterGroup.PG_GENERAL, data_type, is_instance
+            )
+            self._fm.SetFormula(new_fp, subexpr_text)
+            txn.Commit()
+        except Exception as ex:
+            try:
+                if txn is not None and txn.GetStatus().ToString() == 'Started':
+                    txn.RollBack()
+            except Exception:
+                pass
+            _out.print_md(u'**ERROR (creating parameter):** {}'.format(ex))
+            forms.alert(
+                u'Create & Replace failed (creating parameter):\n{}'.format(ex),
+                title='Create & Replace'
+            )
+            return
+
+        # Transaction 2: rewrite affected parameters to reference the new parameter.
+        txn2 = None
+        try:
+            txn2 = Transaction(doc, u'Replace Subexpression Occurrences')
+            txn2.Start()
+            fp_by_name = {_param_name(fp): fp for fp in _get_family_parameters(self._fm)}
+            for it_name, new_f in new_formulas.items():
+                fp = fp_by_name.get(it_name)
+                if fp:
+                    try:
+                        self._fm.SetFormula(fp, new_f)
+                        _out.print_md(u'OK: `{}`'.format(it_name))
+                    except Exception as inner:
+                        _out.print_md(
+                            u'**FAILED:** `{}`  \n**Formula:** `{}`  \n**Error:** {}'.format(
+                                it_name, new_f, inner)
+                        )
+                        raise Exception(
+                            u"SetFormula failed on '{}'.\nFormula:\n{}\nError: {}".format(
+                                it_name, new_f, inner)
+                        )
+                else:
+                    _out.print_md(u'WARNING: parameter `{}` not found in family.'.format(it_name))
+            txn2.Commit()
+        except Exception as ex:
+            try:
+                if txn2 is not None and txn2.GetStatus().ToString() == 'Started':
+                    txn2.RollBack()
+            except Exception:
+                pass
+            forms.alert(
+                u'Create & Replace failed (rewriting formulas):\n'
+                u'See the pyRevit output window for full details.',
+                title='Create & Replace'
+            )
+            return
+
+        # Signal parent to reload without setting a specific formula text
+        if self._on_apply_cb:
+            self._on_apply_cb(None)
+        self.Close()
+
+    def on_prev_suggestion(self, sender, args):
+        if self._suggestion_idx > 0:
+            self._suggestion_idx -= 1
+            self._show_suggestion(self._suggestion_idx)
+
+    def on_next_suggestion(self, sender, args):
+        if self._suggestion_idx < len(self._suggestions) - 1:
+            self._suggestion_idx += 1
+            self._show_suggestion(self._suggestion_idx)
+
+    def on_copy_suggestion(self, sender, args):
+        from System.Windows import Clipboard
+        if not self._suggestions:
+            return
+        sug = self._suggestions[self._suggestion_idx]
+        if isinstance(sug, dict) and sug.get('type') == 'repeated_subexpr':
+            lines = [u"Repeated subexpression: " + sug['subexpr'],
+                     u"  {} x in this parameter".format(sug.get('count_self', 0))]
+            for pname, cnt in sorted(sug.get('whole_matches', {}).items()):
+                lines.append(u"  {} x as entire formula of parameter \"{}\"".format(cnt, pname))
+            for pname, cnt in sorted(sug.get('partial_matches', {}).items()):
+                lines.append(u"  {} x in formula of parameter \"{}\"".format(cnt, pname))
+            text = u"\n".join(lines)
+        else:
+            text = sug if isinstance(sug, str) else str(sug)
+        Clipboard.SetText(text)
+
+    def on_apply(self, sender, args):
+        simplified = self._result.get('simplified', '')
+        if simplified and self._on_apply_cb:
+            self._on_apply_cb(simplified)
+        self.Close()
+
+    def on_close(self, sender, args):
+        self.Close()
 
 
 class ParameterItem(object):
@@ -1108,6 +1471,77 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
     def on_clear_formula(self, sender, args):
         self._formula_set_text("")
 
+    def on_analyze_formula(self, sender, args):
+        formula = self._formula_get_text().strip()
+        if not formula:
+            self._set_status("No formula to analyze.", "neutral")
+            return
+        item = self._selected_parameter_item()
+        if item is None:
+            self._set_status("Select a parameter first.", "error")
+            return
+
+        # ── Step 1: apply to Revit so it normalises spacing/formatting ──
+        txn = None
+        try:
+            txn = Transaction(doc, "Set Parameter Formula")
+            txn.Start()
+            self.fm.SetFormula(item.Param, formula)
+            _force_family_recalc(doc)
+            _force_family_type_cycle(self.fm)
+            _force_family_recalc(doc)
+            txn.Commit()
+        except Exception as ex:
+            try:
+                if txn is not None and txn.GetStatus().ToString() == "Started":
+                    txn.RollBack()
+            except Exception:
+                pass
+            self._set_status("Formula apply failed \u2014 cannot analyse: {}".format(ex), "error")
+            return
+
+        # ── Step 2: reload and read back Revit's normalised formula text ──
+        self._reload_parameter_items(select_name=item.Name)
+        reloaded = self._selected_parameter_item()
+        normalized = (reloaded.Formula if reloaded else None) or formula
+
+        # ── Step 3: analyse the normalised formula ──
+        current_name = reloaded.Name if reloaded else item.Name
+        param_formulas = {
+            it.Name: it.Formula
+            for it in self._all_items
+            if it.Name != current_name and it.Formula
+        }
+        result = _analyze_formula(
+            normalized,
+            param_names=set(self._autocomplete_names),
+            param_formulas=param_formulas,
+        )
+        if not result.get('ok'):
+            forms.alert(
+                u"Formula analysis error:\n{}".format(result.get('error', 'Unknown error')),
+                title="Formula Analysis",
+            )
+            return
+        self._set_status("Formula applied and analysed.", "ok")
+        win = FormulaAnalysisWindow(
+            normalized, result, self.on_apply_formula_text,
+            fm=self.fm,
+            current_item=reloaded,
+            all_items=self._all_items,
+            autocomplete_names=self._autocomplete_names,
+        )
+        win.ShowDialog()
+
+    def on_apply_formula_text(self, new_formula):
+        if new_formula is not None:
+            self._formula_set_text(new_formula)
+            self.on_apply_formula(None, None)
+        else:
+            # Triggered by Create & Replace — just reload
+            sel = self._selected_parameter_item()
+            self._reload_parameter_items(select_name=sel.Name if sel else None)
+
     def on_rename_parameter(self, sender, args):
         item = self._selected_parameter_item()
         if item is None:
@@ -1373,25 +1807,52 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
         self._populate_reorder_groups()
 
     def _reorder_move(self, action):
-        idx = self.lstReorderParams.SelectedIndex
         count = self._reorder_items.Count
-        if idx < 0 or count < 2:
+        if count < 2:
             return
-        item = self._reorder_items[idx]
-        if action == "top":
-            new_idx = 0
-        elif action == "up":
-            new_idx = max(0, idx - 1)
-        elif action == "down":
-            new_idx = min(count - 1, idx + 1)
+
+        # Identify selected items by identity so they survive a Clear+re-Add
+        selected_ids = set(id(it) for it in self.lstReorderParams.SelectedItems)
+        if not selected_ids:
+            return
+
+        items = list(self._reorder_items)
+        selected_indices = sorted(i for i, it in enumerate(items) if id(it) in selected_ids)
+
+        if action == 'top':
+            shift = -selected_indices[0]
+        elif action == 'up':
+            shift = -1 if selected_indices[0] > 0 else 0
+        elif action == 'down':
+            shift = 1 if selected_indices[-1] < count - 1 else 0
         else:  # bottom
-            new_idx = count - 1
-        if new_idx == idx:
+            shift = (count - 1) - selected_indices[-1]
+
+        if shift == 0:
             return
-        self._reorder_items.RemoveAt(idx)
-        self._reorder_items.Insert(new_idx, item)
-        self.lstReorderParams.SelectedIndex = new_idx
-        self.lstReorderParams.ScrollIntoView(self._reorder_items[new_idx])
+
+        sel_set = set(selected_indices)
+        selected_items = [items[i] for i in selected_indices]
+        remaining = [items[i] for i in range(count) if i not in sel_set]
+
+        if shift < 0:
+            insert_at = max(0, selected_indices[0] + shift)
+        else:
+            # Number of non-selected items before the first selected item
+            prefix_count = sum(1 for i in range(selected_indices[0]) if i not in sel_set)
+            insert_at = min(len(remaining), prefix_count + shift)
+
+        new_items = remaining[:insert_at] + selected_items + remaining[insert_at:]
+
+        self._reorder_items.Clear()
+        for it in new_items:
+            self._reorder_items.Add(it)
+
+        # Restore selection on the moved block
+        self.lstReorderParams.SelectedItems.Clear()
+        for i in range(insert_at, insert_at + len(selected_items)):
+            self.lstReorderParams.SelectedItems.Add(self._reorder_items[i])
+        self.lstReorderParams.ScrollIntoView(self._reorder_items[insert_at])
 
     def on_reorder_top(self, sender, args):
         self._reorder_move("top")
@@ -1692,6 +2153,73 @@ def _get_data_type(definition):
         return definition.GetDataType()
     except Exception:
         return getattr(definition, "ParameterType", None)
+
+
+def _infer_subexpr_datatype(subexpr_text, all_items):
+    """
+    Infer the data type that a subexpression produces by looking at the data
+    types of the parameters it references and applying simple dimensional rules.
+
+    Handles common cases:
+    - LengthParam / 2          => Length
+    - LengthParam + LengthParam2 => Length
+    - LengthParam * NumberParam  => Length
+    - LengthParam / LengthParam2 => ambiguous; returns Length (user can override)
+    Returns None if no parameter references are found.
+    """
+    import re as _re
+
+    def _cat(label_lower):
+        if 'length'  in label_lower: return 'length'
+        if 'volume'  in label_lower: return 'volume'
+        if 'area'    in label_lower: return 'area'
+        if 'angle'   in label_lower: return 'angle'
+        if 'number'  in label_lower: return 'number'
+        if 'integer' in label_lower: return 'number'
+        if 'count'   in label_lower: return 'number'
+        return 'other'
+
+    # Build list of (name, dtype_value, category) sorted longest-name-first
+    # so longer param names are matched before shorter ones that might be substrings.
+    candidates = []
+    for it in all_items:
+        if not it.Name:
+            continue
+        dtype = _get_data_type(it.Param.Definition)
+        if dtype is None:
+            continue
+        label = it.DataTypeLabel.lower() if it.DataTypeLabel else str(dtype).lower()
+        candidates.append((it.Name, dtype, _cat(label)))
+    candidates.sort(key=lambda x: -len(x[0]))
+
+    # Identify which parameters are actually referenced (word-boundary match)
+    referenced = []
+    for name, dtype, cat in candidates:
+        pat = r'(?<![A-Za-z0-9_])' + _re.escape(name) + r'(?![A-Za-z0-9_])'
+        if _re.search(pat, subexpr_text):
+            referenced.append((name, dtype, cat))
+
+    if not referenced:
+        return None
+
+    # Separate dimensional vs numeric/dimensionless params
+    dimensional = [(n, dt, c) for n, dt, c in referenced if c not in ('number', 'other')]
+
+    if not dimensional:
+        return referenced[0][1]   # all numeric — return first param's type
+
+    # If only one dimensional category appears, return that type
+    cats_present = {c for _, _, c in dimensional}
+    if len(cats_present) == 1:
+        return dimensional[0][1]
+
+    # Multiple different dimensional types — return the highest-dimensional one
+    for dom_cat in ('volume', 'area', 'length', 'angle'):
+        for _, dt, c in dimensional:
+            if c == dom_cat:
+                return dt
+
+    return referenced[0][1]
 
 
 def _camel_to_words(s):

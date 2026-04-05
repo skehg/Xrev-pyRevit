@@ -261,6 +261,16 @@ class FormulaEditorHighlightMixin(object):
         fg_map = [None] * n
         bg_map = [None] * n
 
+        # --- pass 0: mark characters inside double-quoted strings (no highlighting) ---
+        quoted_map = [False] * n
+        in_quote = False
+        for i, ch in enumerate(text):
+            if ch == '"':
+                quoted_map[i] = True
+                in_quote = not in_quote
+            elif in_quote:
+                quoted_map[i] = True
+
         # --- pass 1: parameter name tokens (case-sensitive word boundaries) ---
         names = sorted(self._autocomplete_names, key=lambda s: -len(s))
         for name in names:
@@ -271,7 +281,7 @@ class FormulaEditorHighlightMixin(object):
                 for m in re.finditer(pattern, text):
                     col = _parse_hex_color("#0000C8")
                     for i in range(m.start(), m.end()):
-                        if fg_map[i] is None:
+                        if fg_map[i] is None and not quoted_map[i]:
                             fg_map[i] = col
             except Exception:
                 pass
@@ -289,7 +299,7 @@ class FormulaEditorHighlightMixin(object):
             candidate_indices.append(caret_idx)
 
         for ci in candidate_indices:
-            if 0 <= ci < n and text[ci] in all_brackets:
+            if 0 <= ci < n and text[ci] in all_brackets and not quoted_map[ci]:
                 match_idx = self._find_matching_bracket(text, ci)
                 if match_idx is not None:
                     # Use a strong highlight so bracket pairing is clearly visible.

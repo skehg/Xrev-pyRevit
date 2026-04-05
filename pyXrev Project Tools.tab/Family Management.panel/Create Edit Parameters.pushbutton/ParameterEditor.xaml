@@ -100,6 +100,7 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="150"/>
@@ -197,6 +198,18 @@
                         <StackPanel Grid.Row="8" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0 10 0 0">
                             <Button x:Name="btnClearFormula" Content="Clear Formula" Width="100" Height="28" Margin="0 0 8 0" Click="on_clear_formula"/>
                             <Button x:Name="btnApplyFormula" Content="Apply Formula" Width="110" Height="28" Click="on_apply_formula"/>
+                        </StackPanel>
+                        <StackPanel Grid.Row="9" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0 4 0 0">
+                            <Button x:Name="btnAnalyzeFormula"
+                                    Content="Beta - Apply &amp; Analyse Formula"
+                                    Height="26"
+                                    Padding="10 0"
+                                    Click="on_analyze_formula"
+                                    Background="#FFF3CD"
+                                    Foreground="#856404"
+                                    BorderBrush="#FFCA2C"
+                                    FontStyle="Italic"
+                                    ToolTip="Beta feature: Applies the formula to Revit (normalising spacing), then analyses and simplifies. Use with caution."/>
                         </StackPanel>
                     </Grid>
                 </TabItem>
@@ -373,10 +386,26 @@
                         <!-- Row 1: parameter list -->
                         <Border Grid.Row="1" BorderBrush="#CFCFCF" BorderThickness="1" CornerRadius="3" Margin="0 0 0 6">
                             <ListBox x:Name="lstReorderParams"
-                                     SelectionMode="Single"
-                                     DisplayMemberPath="Name"
+                                     SelectionMode="Extended"
                                      BorderThickness="0"
-                                     Padding="4"/>
+                                     Padding="4">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding Name}"
+                                                       VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding InstanceTypeLabel}"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="#6A6A6A" FontSize="10"
+                                                       Margin="10 0 0 0"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </Border>
 
                         <!-- Row 2: move buttons -->
