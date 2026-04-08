@@ -16,16 +16,28 @@ clr.AddReference("PresentationCore")
 clr.AddReference("WindowsBase")
 
 from Autodesk.Revit.DB import (
-    BuiltInParameterGroup,
     ElementId,
     FilteredElementCollector,
     LabelUtils,
     Material,
-    ParameterType,
     StorageType,
     Transaction,
     UnitUtils,
 )
+
+# BuiltInParameterGroup and ParameterType were removed in Revit 2025.
+# Import them conditionally so the script loads on all versions 2020-2026.
+try:
+    from Autodesk.Revit.DB import BuiltInParameterGroup
+    _BIPG_AVAILABLE = True
+except ImportError:
+    _BIPG_AVAILABLE = False
+
+try:
+    from Autodesk.Revit.DB import ParameterType
+    _PT_AVAILABLE = True
+except ImportError:
+    _PT_AVAILABLE = False
 from pyrevit import forms, revit
 from formula_highlight import FormulaEditorHighlightMixin
 from formula_analyzer import analyze_formula as _analyze_formula, replace_formula_subexpr as _replace_formula_subexpr
@@ -332,7 +344,7 @@ class FormulaAnalysisWindow(forms.WPFWindow):
             txn = Transaction(doc, u'Create Subexpression Parameter')
             txn.Start()
             new_fp = self._fm.AddParameter(
-                new_name, BuiltInParameterGroup.PG_GENERAL, data_type, is_instance
+                new_name, _default_group_type_general(), data_type, is_instance
             )
             self._fm.SetFormula(new_fp, subexpr_text)
             txn.Commit()
@@ -466,10 +478,11 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
         )
         if _default_disc:
             self.cmbNewDiscipline.SelectedItem = _default_disc
-        self._bind_combo_options(self.cmbNewType, self._all_types_by_discipline.get(_default_disc or "", []))
+        self._bind_combo_options(self.cmbNewType, self._type_options_for_discipline(_default_disc or ""))
         self._bind_combo_options(self.cmbNewGroup, self._group_options)
         self._bind_combo_options(self.cmbSharedDefinition, self._shared_options)
         self._bind_combo_options(self.cmbEditGroup, self._group_options)
+        self._bind_combo_options(self.cmbBatchGroup, self._group_options)
 
         self._set_shared_mode(False)
         self._reload_parameter_items(select_name=None)
@@ -480,6 +493,7 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
         self._populate_reorder_groups()
         self._restore_window_position()
         self._restore_column_layout()
+        self._update_batch_panel()
         self._set_status("Ready.", "neutral")
 
     def _bind_combo_options(self, combo, options):
@@ -597,7 +611,7 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
 
     def _set_edit_group_selection(self, family_param):
         try:
-            current_group = family_param.Definition.ParameterGroup
+            current_group = _get_group_type(family_param.Definition)
         except Exception:
             current_group = None
 
@@ -608,6 +622,132 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
             if str(opt.Value) == str(current_group):
                 self.cmbEditGroup.SelectedItem = opt
                 return
+
+    # ── Multi-select / Batch helpers ──────────────────────────────────────
+
+    def _selected_parameter_items(self):
+        """Return all currently selected ParameterItems as a plain Python list."""
+        return list(self.lstParameters.SelectedItems)
+
+    def _update_batch_panel(self):
+        """Refresh the Batch Edit tab controls to reflect the current selection."""
+        items = self._selected_parameter_items()
+        count = len(items)
+
+        from System.Windows.Media import SolidColorBrush, Color
+
+        if count == 0:
+            self.tabBatchEdit.Background = SolidColorBrush(Color.FromRgb(0xF0, 0xF0, 0xF0))
+            self.tabBatchEdit.Foreground = SolidColorBrush(Color.FromRgb(0x00, 0x00, 0x00))
+            self.txtBatchSummary.Text = (
+                u"Select multiple parameters from the list on the left to batch edit them."
+            )
+            self.btnBatchToggle.IsEnabled = False
+            self.btnBatchToggle.Content = u"Toggle"
+            self.txtBatchToggleInfo.Text = u""
+            self.btnBatchChangeGroup.IsEnabled = False
+            self.btnBatchRename.IsEnabled = False
+            self.btnBatchDuplicate.IsEnabled = False
+            self.btnBatchDelete.IsEnabled = False
+            self._set_batch_group_combo([])
+            return
+
+        if count >= 2:
+            self.tabBatchEdit.Background = SolidColorBrush(Color.FromRgb(0x1E, 0x6D, 0xBB))
+            if self.tabBatchEdit.IsSelected:
+                self.tabBatchEdit.Foreground = SolidColorBrush(Color.FromRgb(0x00, 0x00, 0x00))
+            else:
+                self.tabBatchEdit.Foreground = SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF))
+        else:
+            self.tabBatchEdit.Background = SolidColorBrush(Color.FromRgb(0xF0, 0xF0, 0xF0))
+            self.tabBatchEdit.Foreground = SolidColorBrush(Color.FromRgb(0x00, 0x00, 0x00))
+        self.txtBatchSummary.Text = u"{} parameter(s) selected.".format(count)
+        self.btnBatchChangeGroup.IsEnabled = True
+        self.btnBatchRename.IsEnabled = True
+        self.btnBatchDuplicate.IsEnabled = True
+        self.btnBatchDelete.IsEnabled = True
+
+        # Toggle: active only when all non-shared items share the same state
+        non_shared = [it for it in items if not it.IsShared]
+        if not non_shared:
+            self.btnBatchToggle.IsEnabled = False
+            self.btnBatchToggle.Content = u"Toggle"
+            self.txtBatchToggleInfo.Text = u"All selected are shared (cannot toggle)."
+        else:
+            states = set(it.InstanceTypeLabel for it in non_shared)
+            if len(states) == 1:
+                current_state = list(states)[0]
+                target_state = u"Type" if current_state == u"Instance" else u"Instance"
+                self.btnBatchToggle.IsEnabled = True
+                self.btnBatchToggle.Content = u"Make {}".format(target_state)
+                info = u"All {} non-shared are {}.".format(len(non_shared), current_state)
+                skipped = len(items) - len(non_shared)
+                if skipped:
+                    info += u"  ({} shared will be skipped.)".format(skipped)
+                self.txtBatchToggleInfo.Text = info
+            else:
+                self.btnBatchToggle.IsEnabled = False
+                self.btnBatchToggle.Content = u"Toggle"
+                self.txtBatchToggleInfo.Text = (
+                    u"Mixed Instance/Type \u2014 select all same state to enable toggle."
+                )
+
+        # Group combo: <Varies> when groups differ, pre-select when all same
+        self._set_batch_group_combo(items)
+
+    def _set_batch_group_combo(self, items):
+        """Populate cmbBatchGroup; prepend <Varies> when selected params span groups."""
+        if not items:
+            self._bind_combo_options(self.cmbBatchGroup, self._group_options)
+            return
+
+        groups = set(it.GroupLabel for it in items)
+        options = list(self._group_options)
+        if len(groups) > 1:
+            varies = OptionItem(u"<Varies>", None)
+            options = [varies] + options
+            self.cmbBatchGroup.ItemsSource = options
+            self.cmbBatchGroup.DisplayMemberPath = u"Label"
+            self.cmbBatchGroup.SelectedValuePath = u"Value"
+            self.cmbBatchGroup.SelectedIndex = 0
+        else:
+            self._bind_combo_options(self.cmbBatchGroup, options)
+            target_label = list(groups)[0]
+            for opt in options:
+                if opt.Label == target_label:
+                    self.cmbBatchGroup.SelectedItem = opt
+                    break
+
+    def _do_group_move(self, fp, target_group):
+        """Move fp to target_group using whatever API is available.  Raises on failure."""
+        m = getattr(self.fm, "MoveParameter", None)
+        if callable(m):
+            m(fp, target_group)
+            return
+
+        m = getattr(self.fm, "SetParameterGroup", None)
+        if callable(m):
+            m(fp, target_group)
+            return
+
+        try:
+            m = self.fm.GetType().GetMethod("SetParameterGroup")
+            if m is not None:
+                m.Invoke(self.fm, System.Array[System.Object]([fp, target_group]))
+                return
+        except Exception:
+            pass
+
+        try:
+            defn = fp.Definition
+            prop = defn.GetType().GetProperty("ParameterGroup")
+            if prop is not None and prop.CanWrite:
+                prop.SetValue(defn, target_group, None)
+                return
+        except Exception:
+            pass
+
+        raise Exception("Group move is not available in this Revit version.")
 
     def _set_shared_mode(self, is_shared):
         self.chkNewShared.IsChecked = is_shared
@@ -998,6 +1138,7 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
     def on_param_selected(self, sender, args):
         self._set_editor_from_selected()
         self.popupSuggestions.IsOpen = False
+        self._update_batch_panel()
 
     def on_formula_changed(self, sender, args):
         if self._highlighting:
@@ -1102,15 +1243,17 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
     def on_clear_new_formula(self, sender, args):
         self._rtb_set_text(self.txtNewFormula, "")
 
-    def on_toggle_instance_type(self, sender, args):
-        item = self._selected_parameter_item()
-        if item is None:
-            self._set_status("Select a parameter first.", "error")
-            return
+    def _perform_toggle_single(self, item):
+        """
+        Perform the full Instance/Type toggle for a single ParameterItem, including
+        all chain-dependency checks and user dialogs.
 
+        Returns ('ok', message), ('cancelled', message), or ('error', message).
+        Does NOT call _reload_parameter_items or _set_status — that is the caller's
+        responsibility.
+        """
         if item.IsShared:
-            self._set_status("Shared parameters cannot have their instance/type changed.", "error")
-            return
+            return ('error', u"Shared parameters cannot have their instance/type changed.")
 
         source_param = item.Param
         is_currently_instance = bool(getattr(source_param, "IsInstance", False))
@@ -1147,8 +1290,7 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
                 )
 
                 if choice != "Convert All":
-                    self._set_status("Toggle cancelled.", "neutral")
-                    return
+                    return ('cancelled', u"Toggle cancelled for '{}'.".format(item.Name))
 
                 # Convert deepest level first, then shallower, finally the target.
                 ordered_names = []
@@ -1166,21 +1308,15 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
                             if fp is not None:
                                 self.fm.MakeType(fp)
                     except Exception as ex:
-                        self._set_status(
-                            u"Failed converting '{}' to Type: {}".format(name, ex), "error"
-                        )
-                        return
+                        return ('error', u"Failed converting '{}' to Type: {}".format(name, ex))
 
                 converted = u", ".join(u"'{}'".format(n) for n in ordered_names)
-                self._set_status(u"Converted to Type: {}.".format(converted), "ok")
-                self._reload_parameter_items(select_name=item.Name)
-                return
+                return ('ok', u"Converted to Type: {}.".format(converted))
 
         # ── Type → Instance: check for dependent Type parameters ─────────────
         if not is_currently_instance:
             chain, children_of = _build_type_to_instance_chain(self.fm, item.Name)
             if len(chain) > 1:
-                # Flatten all dependent levels (excluding chain[0] which is the target)
                 dependent_names = []
                 for level in chain[1:]:
                     dependent_names.extend(level)
@@ -1209,8 +1345,7 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
                 )
 
                 if choice != "Convert All":
-                    self._set_status("Toggle cancelled.", "neutral")
-                    return
+                    return ('cancelled', u"Toggle cancelled for '{}'.".format(item.Name))
 
                 # Convert deepest level first, then shallower, finally the target.
                 ordered_names = []
@@ -1227,13 +1362,10 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
                             if fp is not None:
                                 self.fm.MakeInstance(fp)
                 except Exception as ex:
-                    self._set_status("Convert all failed: {}".format(ex), "error")
-                    return
+                    return ('error', u"Convert all failed: {}".format(ex))
 
                 converted = u", ".join(u"'{}'".format(n) for n in ordered_names)
-                self._set_status(u"Converted to Instance: {}.".format(converted), "ok")
-                self._reload_parameter_items(select_name=item.Name)
-                return
+                return ('ok', u"Converted to Instance: {}.".format(converted))
 
         # ── Normal single toggle ──────────────────────────────────────────────
         try:
@@ -1243,11 +1375,174 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
                 else:
                     self.fm.MakeInstance(source_param)
         except Exception as ex:
-            self._set_status("Toggle failed: {}".format(ex), "error")
+            return ('error', u"Toggle failed: {}".format(ex))
+
+        new_scope = u"Type" if is_currently_instance else u"Instance"
+        return ('ok', u"Changed '{}' to {}.".format(item.Name, new_scope))
+
+    def _toggle_multiple(self, items):
+        """
+        Toggle Instance/Type for a batch of ParameterItems without pre-analysis dialogs.
+
+        Instance→Type: uses retry passes so that chained params within the selection
+        (e.g. param2=param1, param3=param2) all succeed — param1 converts first on
+        pass 1, param2 on pass 2, etc.  Params that still fail after no-progress is
+        detected (external formula mismatch) are reported clearly.
+
+        Type→Instance: single pass in any order — Instance params may freely reference
+        Type params so ordering never causes a failure.
+        """
+        non_shared = [it for it in items if not it.IsShared]
+        shared_names = [it.Name for it in items if it.IsShared]
+
+        if not non_shared:
+            self._set_status(u"No non-shared parameters to toggle.", "error")
             return
 
-        new_scope = "Type" if is_currently_instance else "Instance"
-        self._set_status("Changed '{}' to {}.".format(item.Name, new_scope), "ok")
+        is_currently_instance = bool(getattr(non_shared[0].Param, "IsInstance", False))
+        direction = u"Type" if is_currently_instance else u"Instance"
+
+        ok_names = []
+        error_names = []
+
+        if is_currently_instance:
+            # Instance → Type: must convert dependencies before dependents.
+            # Pre-sort the selected items topologically so that a param whose formula
+            # references another selected param comes AFTER that param in the list.
+            names_in_set = {it.Name for it in non_shared}
+            fp_snap = {_param_name(fp): fp for fp in _get_family_parameters(self.fm)}
+
+            # Build internal dependency map: which selected params does each formula reference?
+            internal_deps = {}
+            for it in non_shared:
+                fp = fp_snap.get(it.Name)
+                formula = _safe_formula(fp) if fp else None
+                if formula:
+                    internal_deps[it.Name] = [
+                        n for n in names_in_set
+                        if n != it.Name and _formula_references_parameter(formula, n)
+                    ]
+                else:
+                    internal_deps[it.Name] = []
+
+            # Kahn's topological sort: items with no pending deps go first
+            sorted_items = []
+            remaining = list(non_shared)
+            done_names = set()
+            while remaining:
+                progress = False
+                next_remaining = []
+                for it in remaining:
+                    if all(d in done_names for d in internal_deps.get(it.Name, [])):
+                        sorted_items.append(it)
+                        done_names.add(it.Name)
+                        progress = True
+                    else:
+                        next_remaining.append(it)
+                if not progress:
+                    sorted_items.extend(next_remaining)
+                    break
+                remaining = next_remaining
+
+            # Convert in sorted order — each in its own transaction
+            for it in sorted_items:
+                try:
+                    with revit.Transaction(u"Convert '{}' to Type".format(it.Name)):
+                        live_fps = {_param_name(fp): fp for fp in _get_family_parameters(self.fm)}
+                        fp = live_fps.get(it.Name)
+                        if fp is not None:
+                            self.fm.MakeType(fp)
+                    ok_names.append(it.Name)
+                except Exception:
+                    error_names.append(it.Name)
+        else:
+            # Type → Instance: ordering matters in the SAME way but reversed.
+            # A Type param whose formula references Param1 must be converted to
+            # Instance BEFORE Param1 is converted — otherwise the Type param would
+            # temporarily have an Instance param in its formula.
+            # So we need REVERSE topological order: dependents (leaves) first.
+            names_in_set = {it.Name for it in non_shared}
+            fp_snap = {_param_name(fp): fp for fp in _get_family_parameters(self.fm)}
+
+            # Build dependency map: which selected params does each formula reference?
+            internal_deps = {}
+            for it in non_shared:
+                fp = fp_snap.get(it.Name)
+                formula = _safe_formula(fp) if fp else None
+                if formula:
+                    internal_deps[it.Name] = [
+                        n for n in names_in_set
+                        if n != it.Name and _formula_references_parameter(formula, n)
+                    ]
+                else:
+                    internal_deps[it.Name] = []
+
+            # Topo sort (dependencies first), then reverse = dependents first
+            topo = []
+            remaining = list(non_shared)
+            done_names = set()
+            while remaining:
+                progress = False
+                next_remaining = []
+                for it in remaining:
+                    if all(d in done_names for d in internal_deps.get(it.Name, [])):
+                        topo.append(it)
+                        done_names.add(it.Name)
+                        progress = True
+                    else:
+                        next_remaining.append(it)
+                if not progress:
+                    topo.extend(next_remaining)
+                    break
+                remaining = next_remaining
+
+            # Reverse: convert leaves (dependents) first so no Type param ever
+            # temporarily holds a formula referencing a newly-Instance param.
+            sorted_items = list(reversed(topo))
+
+            for it in sorted_items:
+                try:
+                    with revit.Transaction(u"Convert '{}' to Instance".format(it.Name)):
+                        live_fps = {_param_name(fp): fp for fp in _get_family_parameters(self.fm)}
+                        fp = live_fps.get(it.Name)
+                        if fp is not None:
+                            self.fm.MakeInstance(fp)
+                    ok_names.append(it.Name)
+                except Exception:
+                    error_names.append(it.Name)
+
+        parts = []
+        if ok_names:
+            parts.append(u"Converted {} to {}: {}.".format(
+                len(ok_names), direction,
+                u", ".join(u"'{}'".format(n) for n in ok_names)
+            ))
+        if shared_names:
+            parts.append(u"{} shared parameter(s) skipped.".format(len(shared_names)))
+        if error_names:
+            parts.append(
+                u"Could not convert to {}: {}.  "
+                u"Each may be referenced in a formula with a Type/Instance mismatch.".format(
+                    direction,
+                    u", ".join(u"'{}'".format(n) for n in error_names)
+                )
+            )
+
+        tone = "error" if (error_names and not ok_names) else ("ok" if ok_names else "neutral")
+        self._set_status(u"  ".join(parts) if parts else u"Nothing to toggle.", tone)
+        self._reload_parameter_items(select_name=None)
+        self._populate_sort_groups()
+        self._update_batch_panel()
+
+    def on_toggle_instance_type(self, sender, args):
+        item = self._selected_parameter_item()
+        if item is None:
+            self._set_status("Select a parameter first.", "error")
+            return
+
+        status, msg = self._perform_toggle_single(item)
+        tone = "ok" if status == "ok" else ("neutral" if status == "cancelled" else "error")
+        self._set_status(msg, tone)
         self._reload_parameter_items(select_name=item.Name)
 
     def on_apply_param_settings(self, sender, args):
@@ -1262,49 +1557,15 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
             return
 
         source_param = item.Param
-        source_group = source_param.Definition.ParameterGroup
+        source_group = _get_group_type(source_param.Definition)
 
         if str(source_group) == str(target_group):
             self._set_status("Parameter is already in that group.", "neutral")
             return
 
-        def _do_move():
-            # 1. MoveParameter (Revit 2023+)
-            m = getattr(self.fm, "MoveParameter", None)
-            if callable(m):
-                m(source_param, target_group)
-                return
-
-            # 2. SetParameterGroup via getattr
-            m = getattr(self.fm, "SetParameterGroup", None)
-            if callable(m):
-                m(source_param, target_group)
-                return
-
-            # 3. SetParameterGroup via .NET reflection on FamilyManager
-            try:
-                m = self.fm.GetType().GetMethod("SetParameterGroup")
-                if m is not None:
-                    m.Invoke(self.fm, System.Array[System.Object]([source_param, target_group]))
-                    return
-            except Exception:
-                pass
-
-            # 4. InternalDefinition.ParameterGroup property via reflection
-            try:
-                defn = source_param.Definition
-                prop = defn.GetType().GetProperty("ParameterGroup")
-                if prop is not None and prop.CanWrite:
-                    prop.SetValue(defn, target_group, None)
-                    return
-            except Exception:
-                pass
-
-            raise Exception("Group move is not available in this Revit version.")
-
         try:
             with revit.Transaction("Move Parameter Group"):
-                _do_move()
+                self._do_group_move(source_param, target_group)
         except Exception as ex:
             self._set_status("Move group failed: {}".format(ex), "error")
             return
@@ -1593,11 +1854,27 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
     def on_new_shared_changed(self, sender, args):
         self._set_shared_mode(bool(self.chkNewShared.IsChecked))
 
+    def _type_options_for_discipline(self, disc_str):
+        """Return type OptionItems for disc_str, always including Common types."""
+        disc_types = self._all_types_by_discipline.get(disc_str, [])
+        if disc_str == 'Common':
+            return disc_types
+        common_types = self._all_types_by_discipline.get('Common', [])
+        seen = set()
+        merged = []
+        for opt in common_types + disc_types:
+            key = str(opt.Value)
+            if key not in seen:
+                seen.add(key)
+                merged.append(opt)
+        merged.sort(key=lambda o: o.Label.lower())
+        return merged
+
     def on_new_discipline_changed(self, sender, args):
         disc = self.cmbNewDiscipline.SelectedItem
         if disc is None:
             return
-        type_options = self._all_types_by_discipline.get(str(disc), [])
+        type_options = self._type_options_for_discipline(str(disc))
         self._bind_combo_options(self.cmbNewType, type_options)
 
     def on_shared_def_selected(self, sender, args):
@@ -1920,6 +2197,333 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
         )
         self._populate_reorder_list()  # refresh from new Revit order to confirm
 
+    # ── Batch Edit tab handlers ───────────────────────────────────────────
+
+    def on_tab_selection_changed(self, sender, args):
+        # SelectionChanged bubbles up from ALL child controls (ComboBox, ListBox, etc.)
+        # Only respond when an actual TabItem was added to the selection.
+        from System.Windows.Controls import TabItem
+        if not args.AddedItems or not isinstance(args.AddedItems[0], TabItem):
+            return
+        self._update_batch_panel()
+        try:
+            if self.tabImport.IsSelected:
+                self._ensure_import_lib()
+                self._populate_import_source_combo()
+        except Exception:
+            pass
+
+    def on_batch_toggle(self, sender, args):
+        items = self._selected_parameter_items()
+        non_shared = [it for it in items if not it.IsShared]
+
+        if not non_shared:
+            self._set_status(u"No non-shared parameters selected.", "error")
+            return
+        if len(non_shared) == 1:
+            status, msg = self._perform_toggle_single(non_shared[0])
+            tone = "ok" if status == "ok" else ("neutral" if status == "cancelled" else "error")
+            self._set_status(msg, tone)
+            self._reload_parameter_items(select_name=non_shared[0].Name)
+        else:
+            self._toggle_multiple(items)
+        self._update_batch_panel()
+
+    def on_batch_change_group(self, sender, args):
+        items = self._selected_parameter_items()
+        if not items:
+            self._set_status(u"Select parameters first.", "error")
+            return
+
+        selected_opt = self.cmbBatchGroup.SelectedItem
+        if selected_opt is None or selected_opt.Value is None:
+            self._set_status(u"Select a destination group.", "error")
+            return
+
+        target_group = selected_opt.Value
+        target_label = _label_for_group(target_group)
+
+        moved = []
+        skipped = []
+        errors = []
+        for it in items:
+            fp = it.Param
+            try:
+                source_group = _get_group_type(fp.Definition)
+            except Exception:
+                skipped.append(it.Name)
+                continue
+
+            if str(source_group) == str(target_group):
+                skipped.append(it.Name)
+                continue
+
+            try:
+                with revit.Transaction(u"Move Parameter Group"):
+                    self._do_group_move(fp, target_group)
+                moved.append(it.Name)
+            except Exception as ex:
+                errors.append(u"{} ({})".format(it.Name, ex))
+
+        parts = []
+        if moved:
+            parts.append(u"Moved {} parameter(s) to '{}'.".format(len(moved), target_label))
+        if skipped:
+            parts.append(u"{} already in group (skipped).".format(len(skipped)))
+        if errors:
+            parts.append(u"Errors: {}.".format(u"  ".join(errors)))
+
+        tone = "error" if errors else "ok"
+        self._set_status(u"  ".join(parts) if parts else u"Nothing to move.", tone if parts else "neutral")
+        self._reload_parameter_items(select_name=None)
+        self._update_batch_panel()
+
+    def on_batch_prefix_suffix(self, sender, args):
+        items = self._selected_parameter_items()
+        if not items:
+            self._set_status(u"Select parameters first.", "error")
+            return
+
+        find_text    = (self.txtBatchFind.Text    or u"")
+        replace_text = self.txtBatchReplace.Text if self.txtBatchReplace.Text is not None else u""
+        prefix       = (self.txtBatchPrefix.Text  or u"").strip()
+        suffix       = (self.txtBatchSuffix.Text  or u"").strip()
+        use_regex    = bool(self.chkBatchRegex.IsChecked)
+
+        if not find_text and not prefix and not suffix:
+            self._set_status(u"Enter a Find value and/or Prefix/Suffix.", "error")
+            return
+
+        if find_text and use_regex:
+            try:
+                find_pattern = re.compile(find_text)
+            except Exception as ex:
+                self._set_status(u"Invalid regex: {}".format(ex), "error")
+                return
+        else:
+            find_pattern = None
+
+        rename_method = getattr(self.fm, "RenameParameter", None)
+        if not callable(rename_method):
+            self._set_status(u"Rename not supported in this Revit version.", "error")
+            return
+
+        # Shared params cannot be renamed — warn and offer to skip them
+        shared_items = [it for it in items if it.IsShared]
+        if shared_items:
+            choice = forms.alert(
+                u"Shared parameters cannot be renamed.\n\n"
+                u"Skip {} shared parameter(s) and rename the rest?".format(len(shared_items)),
+                title=u"Rename Shared Parameters",
+                options=["Skip & Continue", "Cancel"],
+            )
+            if choice != "Skip & Continue":
+                self._set_status(u"Rename cancelled.", "neutral")
+                return
+            items = [it for it in items if not it.IsShared]
+            if not items:
+                self._set_status(u"No renameable parameters selected.", "neutral")
+                return
+
+        def _apply_rename(name):
+            # Apply find / replace on the original name first, then wrap with prefix / suffix
+            result = name
+            if find_text:
+                if use_regex:
+                    result = find_pattern.sub(replace_text, result)
+                else:
+                    result = result.replace(find_text, replace_text)
+            return prefix + result + suffix
+
+        # Pre-validate: compute all new names and check for conflicts
+        existing_lower = {it.Name.lower() for it in self._all_items}
+        selected_lower = {it.Name.lower() for it in items}
+        available = existing_lower - selected_lower
+
+        new_names = {}
+        no_change = []
+        conflicts = []
+        for it in items:
+            new_name = _apply_rename(it.Name)
+            if not new_name.strip():
+                conflicts.append(u"'{}' \u2192 (empty) \u2014 would produce an empty name".format(it.Name))
+                continue
+            if new_name == it.Name:
+                no_change.append(it.Name)
+                continue
+            new_lower = new_name.lower()
+            if new_lower in available or new_lower in {v.lower() for v in new_names.values()}:
+                conflicts.append(u"'{}' \u2192 '{}' (already exists)".format(it.Name, new_name))
+            else:
+                new_names[it.Name] = new_name
+
+        if conflicts:
+            forms.alert(
+                u"The following renames would create name conflicts:\n\n{}".format(
+                    u"\n".join(conflicts)
+                ),
+                title=u"Rename Conflict",
+            )
+            return
+
+        if not new_names:
+            self._set_status(u"Find text not found in any selected parameter name.", "neutral")
+            return
+
+        renamed = []
+        errors = []
+        for it in items:
+            new_name = new_names.get(it.Name)
+            if new_name is None:
+                continue
+            try:
+                with revit.Transaction(u"Rename Parameter"):
+                    rename_method(it.Param, new_name)
+                renamed.append(u"'{}' \u2192 '{}'".format(it.Name, new_name))
+            except Exception as ex:
+                errors.append(u"{} ({})".format(it.Name, ex))
+
+        parts = []
+        if renamed:
+            parts.append(u"Renamed {} parameter(s).".format(len(renamed)))
+        if no_change:
+            parts.append(u"{} unchanged (no match).".format(len(no_change)))
+        if errors:
+            parts.append(u"Errors: {}.".format(u"  ".join(errors)))
+
+        tone = "error" if errors else "ok"
+        self._set_status(u"  ".join(parts) if parts else u"Nothing renamed.", tone if parts else "neutral")
+        self._reload_parameter_items(select_name=None)
+        self._populate_sort_groups()
+        self._update_batch_panel()
+
+    def on_batch_duplicate(self, sender, args):
+        items = self._selected_parameter_items()
+        if not items:
+            self._set_status(u"Select parameters first.", "error")
+            return
+
+        shared_items = [it for it in items if it.IsShared]
+        if shared_items:
+            choice = forms.alert(
+                u"Shared parameters cannot be duplicated with a new name using the same shared definition.\n"
+                u"{} shared parameter(s) will be created as non-shared family parameters instead.\n\n"
+                u"Continue?".format(len(shared_items)),
+                title=u"Duplicate Shared Parameters",
+                options=["Continue", "Cancel"],
+            )
+            if choice != "Continue":
+                self._set_status(u"Duplicate cancelled.", "neutral")
+                return
+
+        # Track all names (existing + newly created) to avoid collisions within the batch
+        all_names = [it.Name for it in self._all_items]
+        created = []
+        errors = []
+        for it in items:
+            new_name = _next_duplicate_name(it.Name, all_names)
+            try:
+                with revit.Transaction(u"Duplicate Family Parameter"):
+                    new_param = _duplicate_family_parameter(self.fm, it.Param, new_name)
+                    if not _safe_formula(it.Param):
+                        _copy_current_parameter_value(self.fm, it.Param, new_param)
+                    source_formula = _safe_formula(it.Param)
+                    if source_formula:
+                        self.fm.SetFormula(new_param, source_formula)
+                all_names.append(new_name)
+                created.append(new_name)
+            except Exception as ex:
+                errors.append(u"{} ({})".format(it.Name, ex))
+
+        parts = []
+        if created:
+            parts.append(u"Duplicated {} parameter(s).".format(len(created)))
+        if errors:
+            parts.append(u"Errors: {}.".format(u"  ".join(errors)))
+
+        tone = "error" if errors else "ok"
+        self._set_status(u"  ".join(parts) if parts else u"Nothing duplicated.", tone if parts else "neutral")
+        self._reload_parameter_items(select_name=None)
+        self._populate_sort_groups()
+        self._update_batch_panel()
+
+    def on_batch_delete(self, sender, args):
+        items = self._selected_parameter_items()
+        if not items:
+            self._set_status(u"Select parameters first.", "error")
+            return
+
+        names = [it.Name for it in items]
+
+        try:
+            used_set = find_directly_used_params(doc, self.fm)
+            used_names_in_use = {_param_name(fp) for fp in used_set}
+        except Exception:
+            used_names_in_use = set()
+
+        warning_lines = [
+            u"Delete {} parameter(s)?\n\n{}\n\n"
+            u"To undo, close the Parameter Editor and use Revit's Undo (Ctrl+Z).".format(
+                len(names),
+                u", ".join(u"'{}'".format(n) for n in names)
+            )
+        ]
+
+        in_use = [n for n in names if n in used_names_in_use]
+        if in_use:
+            warning_lines.append(
+                u"\u26a0  In use (dimension/association/array): {}.".format(
+                    u", ".join(u"'{}'".format(n) for n in in_use)
+                )
+            )
+
+        # Warn about formula references that survive the batch (not themselves being deleted)
+        broken_refs = []
+        for name in names:
+            refs = find_formula_referencing_params(self.fm, name)
+            external_refs = [r for r in refs if r not in names]
+            if external_refs:
+                broken_refs.append(
+                    u"'{}' referenced by: {}.".format(name, u", ".join(external_refs))
+                )
+        if broken_refs:
+            warning_lines.append(
+                u"\u26a0  Formula references that will break:\n    " +
+                u"\n    ".join(broken_refs)
+            )
+
+        confirmed = forms.alert(
+            u"\n\n".join(warning_lines),
+            title=u"Delete {} Parameters".format(len(names)),
+            ok=True,
+            cancel=True,
+        )
+        if not confirmed:
+            self._set_status(u"Delete cancelled.", "neutral")
+            return
+
+        deleted = []
+        errors = []
+        for it in items:
+            try:
+                with revit.Transaction(u"Delete Family Parameter"):
+                    self.fm.RemoveParameter(it.Param)
+                deleted.append(it.Name)
+            except Exception as ex:
+                errors.append(u"{} ({})".format(it.Name, ex))
+
+        parts = []
+        if deleted:
+            parts.append(u"Deleted {} parameter(s).".format(len(deleted)))
+        if errors:
+            parts.append(u"Errors: {}.".format(u"  ".join(errors)))
+
+        tone = "error" if errors else "ok"
+        self._set_status(u"  ".join(parts) if parts else u"Nothing deleted.", tone if parts else "neutral")
+        self._reload_parameter_items(select_name=None)
+        self._populate_sort_groups()
+        self._update_batch_panel()
+
     def _restore_column_layout(self):
         from pyrevit import script as _pyscript
         from System.Windows.Controls import DataGridLength
@@ -1978,6 +2582,287 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
                     self.Top = top
         except Exception:
             pass
+
+    # ── Import Parameters tab ─────────────────────────────────────────────
+
+    def _ensure_import_lib(self):
+        """Lazy-load family_param_transfer; store references as instance attrs."""
+        if getattr(self, u"_import_lib_loaded", False):
+            return
+        import family_param_transfer as _fpt
+        self._fpt_get_open         = _fpt.get_open_family_docs
+        self._fpt_read_params      = _fpt.read_params_from_doc
+        self._fpt_read_nested      = _fpt.read_nested_families_from_doc
+        self._fpt_read_styles      = _fpt.read_object_styles_from_doc
+        self._fpt_transfer_params  = _fpt.transfer_params_to_doc
+        self._fpt_transfer_nested  = _fpt.transfer_nested_families_to_doc
+        self._fpt_transfer_styles  = _fpt.transfer_object_styles_to_doc
+        self._import_lib_loaded = True
+        # full lists from source doc (raw, unfiltered)
+        self._import_all_params = []
+        self._import_all_nested = []
+        self._import_all_styles = []
+
+    def _populate_import_source_combo(self):
+        """Populate cmbImportSource with currently open family docs."""
+        self._ensure_import_lib()
+        docs = self._fpt_get_open(app, exclude_title=doc.Title)
+        current = self.cmbImportSource.SelectedItem
+        current_title = current.Title if current is not None else None
+        self.cmbImportSource.ItemsSource = docs
+        self.cmbImportSource.DisplayMemberPath = u"Title"
+        if docs:
+            for d in docs:
+                if d.Title == current_title:
+                    self.cmbImportSource.SelectedItem = d
+                    break
+            else:
+                self.cmbImportSource.SelectedIndex = 0
+        else:
+            self.cmbImportSource.SelectedIndex = -1
+            self._import_all_params = []
+            self._import_all_nested = []
+            self._import_all_styles = []
+            self._apply_import_params_filter()
+            self._apply_import_nested_filter()
+            self._apply_import_styles_filter()
+            self.btnImportExecute.IsEnabled = False
+
+    def _get_import_source_doc(self):
+        """Return the currently selected source Document or None."""
+        sel = self.cmbImportSource.SelectedItem
+        if sel is None:
+            return None
+        try:
+            if sel.IsValidObject and sel.IsFamilyDocument:
+                return sel
+        except Exception:
+            pass
+        return None
+
+    def _load_import_source_data(self, source_doc):
+        """Read params, nested families, and object styles from source_doc."""
+        self._ensure_import_lib()
+        try:
+            col = self._fpt_read_params(source_doc)
+            self._import_all_params = list(col)
+        except Exception:
+            self._import_all_params = []
+        try:
+            col = self._fpt_read_nested(source_doc)
+            self._import_all_nested = list(col)
+        except Exception:
+            self._import_all_nested = []
+        try:
+            col = self._fpt_read_styles(source_doc, include_model=True,
+                                        include_annotation=True, include_imports=False)
+            self._import_all_styles = list(col)
+        except Exception:
+            self._import_all_styles = []
+        parents = sorted({s.ParentCategory for s in self._import_all_styles})
+        self.cmbImportStylesCategory.ItemsSource = [u"(All)"] + parents
+        self.cmbImportStylesCategory.SelectedIndex = 0
+
+    def _apply_import_params_filter(self):
+        from System.Collections.ObjectModel import ObservableCollection
+        search = (self.txtImportSearch.Text or u"").strip().lower()
+        hide_nt = bool(self.chkImportHideNonTransferable.IsChecked)
+        filtered = []
+        for item in self._import_all_params:
+            if hide_nt and item.IsLikelyNonTransferable:
+                continue
+            if search and search not in item.Name.lower():
+                continue
+            filtered.append(item)
+        col = ObservableCollection[object]()
+        for item in filtered:
+            col.Add(item)
+        self.lstImportParams.ItemsSource = col
+        self.txtImportParamsCount.Text = u"{} parameters shown".format(len(filtered))
+
+    def _apply_import_nested_filter(self):
+        from System.Collections.ObjectModel import ObservableCollection
+        col = ObservableCollection[object]()
+        for item in self._import_all_nested:
+            col.Add(item)
+        self.lstImportNested.ItemsSource = col
+
+    def _apply_import_styles_filter(self):
+        from System.Collections.ObjectModel import ObservableCollection
+        inc_model = bool(self.chkImportStylesModel.IsChecked)
+        inc_anno  = bool(self.chkImportStylesAnnotation.IsChecked)
+        inc_imp   = bool(self.chkImportStylesImported.IsChecked)
+        sel_parent = self.cmbImportStylesCategory.SelectedItem
+        parent_filter = None if (sel_parent is None or sel_parent == u"(All)") else sel_parent
+        filtered = []
+        for item in self._import_all_styles:
+            if item.StyleType == u"Model"      and not inc_model:  continue
+            if item.StyleType == u"Annotation" and not inc_anno:   continue
+            if item.StyleType == u"Import"     and not inc_imp:    continue
+            if parent_filter and item.ParentCategory != parent_filter: continue
+            filtered.append(item)
+        col = ObservableCollection[object]()
+        for item in filtered:
+            col.Add(item)
+        self.lstImportStyles.ItemsSource = col
+
+    def _update_import_execute_button(self):
+        src = self._get_import_source_doc()
+        self.btnImportExecute.IsEnabled = (src is not None)
+
+    def on_import_source_changed(self, sender, args):
+        if not getattr(self, u"_import_lib_loaded", False):
+            return
+        src = self._get_import_source_doc()
+        if src is None:
+            self._import_all_params = []
+            self._import_all_nested = []
+            self._import_all_styles = []
+            self._apply_import_params_filter()
+            self._apply_import_nested_filter()
+            self._apply_import_styles_filter()
+            self.btnImportExecute.IsEnabled = False
+            return
+        self._load_import_source_data(src)
+        self._apply_import_params_filter()
+        self._apply_import_nested_filter()
+        self._apply_import_styles_filter()
+        self._update_import_execute_button()
+
+    def on_import_refresh(self, sender, args):
+        self._populate_import_source_combo()
+
+    def on_import_subtab_changed(self, sender, args):
+        from System.Windows.Controls import TabItem
+        if not args.AddedItems or not isinstance(args.AddedItems[0], TabItem):
+            return
+        args.Handled = True
+
+    def on_import_search_changed(self, sender, args):
+        self._apply_import_params_filter()
+
+    def on_import_filter_changed(self, sender, args):
+        self._apply_import_params_filter()
+        self._apply_import_styles_filter()
+
+    def on_import_style_category_changed(self, sender, args):
+        self._apply_import_styles_filter()
+
+    def on_import_params_select_all(self, sender, args):
+        src = self.lstImportParams.ItemsSource
+        if src:
+            for item in src:
+                item.IsSelected = True
+
+    def on_import_params_select_none(self, sender, args):
+        src = self.lstImportParams.ItemsSource
+        if src:
+            for item in src:
+                item.IsSelected = False
+
+    def on_import_nested_select_all(self, sender, args):
+        src = self.lstImportNested.ItemsSource
+        if src:
+            for item in src:
+                item.IsSelected = True
+
+    def on_import_nested_select_none(self, sender, args):
+        src = self.lstImportNested.ItemsSource
+        if src:
+            for item in src:
+                item.IsSelected = False
+
+    def on_import_styles_select_all(self, sender, args):
+        src = self.lstImportStyles.ItemsSource
+        if src:
+            for item in src:
+                item.IsSelected = True
+
+    def on_import_styles_select_none(self, sender, args):
+        src = self.lstImportStyles.ItemsSource
+        if src:
+            for item in src:
+                item.IsSelected = False
+
+    def on_import_execute(self, sender, args):
+        self._ensure_import_lib()
+        src = self._get_import_source_doc()
+        if src is None:
+            self._set_status(u"No source family selected.", u"error")
+            return
+
+        hide_nt = bool(self.chkImportHideNonTransferable.IsChecked)
+        sel_params = [i for i in self._import_all_params
+                      if i.IsSelected and not (hide_nt and i.IsLikelyNonTransferable)]
+        sel_nested = [i for i in self._import_all_nested if i.IsSelected]
+        sel_styles = [i for i in self._import_all_styles if i.IsSelected]
+
+        if not sel_params and not sel_nested and not sel_styles:
+            self._set_status(u"Nothing selected to import.", u"error")
+            return
+
+        tf   = bool(self.chkImportTransferFormulas.IsChecked)
+        tv   = bool(self.chkImportTransferValues.IsChecked)
+        ov   = bool(self.chkImportOverwriteValues.IsChecked)
+        cm   = bool(self.chkImportCreateMaterials.IsChecked)
+        mo   = bool(self.chkImportNestedMissingOnly.IsChecked)
+        re_x = bool(self.chkImportNestedReloadExisting.IsChecked)
+
+        from pyrevit import script as _pyscript
+        _out = _pyscript.get_output()
+        _out.print_md(u"# Import Parameters Results")
+        _out.print_md(u"**Source:** {}  \n**Target:** {}".format(src.Title, doc.Title))
+        _out.print_md(u"---")
+
+        if sel_params:
+            res = self._fpt_transfer_params(app, src, sel_params, doc, tf, tv, ov, cm)
+            _out.print_md(u"## Parameters")
+            for name, _ in res[u"transferred"]:
+                _out.print_md(u"- \u2713 {}".format(name))
+            for name, reason in res[u"skipped"]:
+                _out.print_md(u"- \u25e6 {} \u2014 _{}_ ".format(name, reason))
+            for name, reason in res[u"failed"]:
+                _out.print_md(u"- \u2717 {} \u2014 _{}_ ".format(name, reason))
+            if res[u"formula_applied"]:
+                _out.print_md(u"**Formulas applied:** {}".format(len(res[u"formula_applied"])))
+            for name, reason in res[u"formula_failed"]:
+                _out.print_md(u"- \u2717 formula {} \u2014 _{}_ ".format(name, reason))
+            if res[u"values_copied"]:
+                _out.print_md(u"**Values copied:** {}".format(len(res[u"values_copied"])))
+            for name, reason in res[u"values_failed"]:
+                _out.print_md(u"- \u2717 value {} \u2014 _{}_ ".format(name, reason))
+            if res[u"materials_created"]:
+                _out.print_md(u"**Materials created:** {}".format(
+                    u", ".join(res[u"materials_created"])))
+            for note in res[u"preload_notes"]:
+                _out.print_md(u"- \u25e6 {}".format(note))
+
+        if sel_nested:
+            nres = self._fpt_transfer_nested(src, sel_nested, doc, mo, re_x)
+            _out.print_md(u"## Nested Families")
+            for name, _ in nres[u"loaded"]:
+                _out.print_md(u"- \u2713 {} (loaded)".format(name))
+            for name, _ in nres[u"reloaded"]:
+                _out.print_md(u"- \u2713 {} (reloaded)".format(name))
+            for name, reason in nres[u"skipped"]:
+                _out.print_md(u"- \u25e6 {} \u2014 _{}_ ".format(name, reason))
+            for name, reason in nres[u"failed"]:
+                _out.print_md(u"- \u2717 {} \u2014 _{}_ ".format(name, reason))
+
+        if sel_styles:
+            sres = self._fpt_transfer_styles(src, sel_styles, doc)
+            _out.print_md(u"## Object Styles")
+            for name, _ in sres[u"created"]:
+                _out.print_md(u"- \u2713 {} (created)".format(name))
+            for name, _ in sres[u"copied"]:
+                _out.print_md(u"- \u2713 {} (graphics copied)".format(name))
+            for name, reason in sres[u"skipped"]:
+                _out.print_md(u"- \u25e6 {} \u2014 _{}_ ".format(name, reason))
+            for name, reason in sres[u"failed"]:
+                _out.print_md(u"- \u2717 {} \u2014 _{}_ ".format(name, reason))
+
+        self._reload_parameter_items(select_name=None)
+        self._set_status(u"Import complete. See output window for details.", u"ok")
 
     def on_close(self, sender, args):
         from pyrevit import script as _pyscript
@@ -2094,17 +2979,13 @@ def _read_value_for_display(current_type, fp):
 
 def _group_label(fp):
     try:
-        g = fp.Definition.ParameterGroup
+        g = _get_group_type(fp.Definition)
     except Exception:
         return ""
 
-    try:
-        return LabelUtils.GetLabelFor(g)
-    except Exception:
-        try:
-            return str(g)
-        except Exception:
-            return ""
+    if g is None:
+        return ""
+    return _label_for_group(g)
 
 
 def _pretty_type_text(text):
@@ -2153,6 +3034,30 @@ def _get_data_type(definition):
         return definition.GetDataType()
     except Exception:
         return getattr(definition, "ParameterType", None)
+
+
+def _get_group_type(definition):
+    """Return the parameter's group value as a ForgeTypeId (2023+) or BuiltInParameterGroup.
+
+    Uses GetGroupTypeId() introduced in Revit 2023; falls back to the
+    ParameterGroup property which was removed in Revit 2025.
+    """
+    try:
+        return definition.GetGroupTypeId()
+    except AttributeError:
+        return definition.ParameterGroup
+
+
+def _default_group_type_general():
+    """Return the 'General' parameter group value compatible with the running Revit version."""
+    try:
+        from Autodesk.Revit.DB import GroupTypeId
+        return GroupTypeId.General
+    except Exception:
+        pass
+    if _BIPG_AVAILABLE:
+        return BuiltInParameterGroup.PG_GENERAL
+    return None
 
 
 def _infer_subexpr_datatype(subexpr_text, all_items):
@@ -2233,13 +3138,29 @@ _STRUCTURAL_PT_NAMES = frozenset((
     "Moment", "LinearMoment", "Stress", "UnitWeight", "Weight",
     "WeightPerUnitLength", "MomentOfInertia", "WarpingConstant",
     "SectionModulus", "SectionArea", "SectionDimension",
-    "ReinforcementCover", "ReinforcementArea", "ReinforcementAreaperUnitLength",
+    "ReinforcementCover", "ReinforcementArea",
+    "ReinforcementAreaperUnitLength", "ReinforcementAreaPerUnitLength",  # both capitalisations
     "ReinforcementSpacing", "ReinforcementVolume", "BarDiameter",
     "CrackWidth", "DisplacementDeflection", "Energy",
     "StructuralFrequency", "Period", "Pulsation", "Acceleration",
     "LinearMass", "LinearMassMomentOfInertia",
     "AreaSpringCoefficient", "LineSpringCoefficient", "PointSpringCoefficient",
     "RotationalLineSpringCoefficient", "RotationalPointSpringCoefficient",
+    # Items that fall through the prefix checks but belong to Structural
+    "AreaForcePerLength", "ForcePerLength", "ForceLengthPerAngle",
+    "LinearForcePerLength", "LinearForceLengthPerAngle",
+    "MassPerUnitArea", "MassPerUnitLength",
+    "ReinforcementLength", "Rotation", "SectionProperty",
+    "StructuralVelocity", "SurfaceArea", "ThermalExpansion",
+))
+
+_ELECTRICAL_PT_NAMES = frozenset((
+    "ColorTemperature", "NumberOfPoles", "WireSize",
+))
+
+_PIPING_PT_NAMES = frozenset((
+    "FixtureUnit", "PipeDimension", "PipeInsulationThickness",
+    "PipeMass", "PipeMassPerUnitLength", "PipeSize",
 ))
 
 _ENERGY_PT_NAMES = frozenset((
@@ -2264,7 +3185,9 @@ _PT_LABEL_OVERRIDES = {
     "HVACHeatingLoadDividedByVolume": "Heating Load / Volume",
     "DisplacementDeflection": "Displacement/Deflection",
     "ReinforcementAreaperUnitLength": "Reinforcement Area per Unit Length",
+    "ReinforcementAreaPerUnitLength": "Reinforcement Area per Unit Length",
     "StructuralFrequency": "Frequency",
+    "TimeInterval": "Time",
 }
 
 
@@ -2281,25 +3204,87 @@ def _pt_discipline_and_label(name):
             discipline = "Structural"
         elif name in _ENERGY_PT_NAMES:
             discipline = "Energy"
+        elif name in _ELECTRICAL_PT_NAMES:
+            discipline = "Electrical"
+        elif name in _PIPING_PT_NAMES:
+            discipline = "Piping"
     label = _PT_LABEL_OVERRIDES.get(name) or _camel_to_words(raw)
     return discipline, label
 
 
 def _build_all_type_options_by_discipline():
     result = {}
-    try:
-        for pt in System.Enum.GetValues(ParameterType):
-            name = str(pt)
-            if "invalid" in name.lower():
-                continue
-            discipline, label = _pt_discipline_and_label(name)
-            if not label:
-                continue
-            if discipline not in result:
-                result[discipline] = []
-            result[discipline].append(OptionItem(label, pt))
-    except Exception:
-        pass
+    if _PT_AVAILABLE:
+        # Pre-2025: enumerate the ParameterType enum
+        try:
+            for pt in System.Enum.GetValues(ParameterType):
+                name = str(pt)
+                if "invalid" in name.lower():
+                    continue
+                discipline, label = _pt_discipline_and_label(name)
+                if not label:
+                    continue
+                if discipline not in result:
+                    result[discipline] = []
+                result[discipline].append(OptionItem(label, pt))
+        except Exception:
+            pass
+    else:
+        # 2025+: use Python attribute inspection on SpecTypeId.
+        # SpecTypeId has nested classes (String, Int, Boolean, etc.) so we walk
+        # them recursively with dir()/getattr() — more reliable in IronPython than
+        # CLR reflection (GetNestedTypes/GetProperties/GetValue).
+        try:
+            from Autodesk.Revit.DB import SpecTypeId
+            get_label_for_spec = getattr(LabelUtils, "GetLabelForSpec", None)
+            if callable(get_label_for_spec):
+                seen_specs = set()
+
+                def _walk_spec(obj, depth=0):
+                    if depth > 4:
+                        return
+                    for _aname in dir(obj):
+                        if _aname.startswith('_'):
+                            continue
+                        try:
+                            v = getattr(obj, _aname)
+                        except Exception:
+                            continue
+                        if v is None:
+                            continue
+                        tid = getattr(v, 'TypeId', None)
+                        if tid and isinstance(tid, str):
+                            # It's a ForgeTypeId instance
+                            if tid in seen_specs:
+                                continue
+                            seen_specs.add(tid)
+                            try:
+                                label = get_label_for_spec(v)
+                                if not label:
+                                    continue
+                                tid_low = tid.lower()
+                                if 'hvac' in tid_low:
+                                    disc = 'HVAC'
+                                elif 'electrical' in tid_low:
+                                    disc = 'Electrical'
+                                elif 'piping' in tid_low or 'plumbing' in tid_low:
+                                    disc = 'Piping'
+                                elif 'structural' in tid_low:
+                                    disc = 'Structural'
+                                elif 'energy' in tid_low:
+                                    disc = 'Energy'
+                                else:
+                                    disc = 'Common'
+                                result.setdefault(disc, []).append(OptionItem(label, v))
+                            except Exception:
+                                pass
+                        elif isinstance(v, type) and depth < 3:
+                            # Nested class — recurse into it
+                            _walk_spec(v, depth + 1)
+
+                _walk_spec(SpecTypeId)
+        except Exception:
+            pass
     for d in result:
         result[d].sort(key=lambda o: o.Label.lower())
     return result
@@ -2328,56 +3313,168 @@ def _build_type_options(fm):
         options.sort(key=lambda o: o.Label.lower())
         return options
 
-    try:
-        fallback = [
-            ParameterType.Text,
-            ParameterType.Number,
-            ParameterType.Length,
-            ParameterType.YesNo,
-            ParameterType.Integer,
-        ]
-        for item in fallback:
-            options.append(OptionItem(_pretty_type_text(str(item)), item))
-    except Exception:
-        pass
+    if _PT_AVAILABLE:
+        try:
+            fallback = [
+                ParameterType.Text,
+                ParameterType.Number,
+                ParameterType.Length,
+                ParameterType.YesNo,
+                ParameterType.Integer,
+            ]
+            for item in fallback:
+                options.append(OptionItem(_pretty_type_text(str(item)), item))
+        except Exception:
+            pass
+    else:
+        # 2025+: use SpecTypeId equivalents
+        try:
+            from Autodesk.Revit.DB import SpecTypeId
+            fallback = [
+                (SpecTypeId.String.Text,    "Text"),
+                (SpecTypeId.Number,         "Number"),
+                (SpecTypeId.Length,         "Length"),
+                (SpecTypeId.Boolean.YesNo,  "Yes/No"),
+                (SpecTypeId.Int.Integer,    "Integer"),
+            ]
+            for spec, label in fallback:
+                options.append(OptionItem(label, spec))
+        except Exception:
+            pass
 
     return options
 
 
+# Groups shown by Revit in the Family Types / Edit Family Parameters dialog.
+# Used to filter the full BuiltInParameterGroup enum down to the same subset.
+_FAMILY_PARAM_GROUP_LABELS = frozenset((
+    "analysis results",
+    "analytical alignment",
+    "analytical model",
+    "constraints",
+    "construction",
+    "data",
+    "dimensions",
+    "division geometry",
+    "electrical",
+    "electrical - circuiting",
+    "electrical - lighting",
+    "electrical - loads",
+    "electrical engineering",
+    "energy analysis",
+    "fire protection",
+    "forces",
+    "general",
+    "graphics",
+    "green building properties",
+    "identity data",
+    "ifc parameters",
+    "layers",
+    "materials and finishes",
+    "mechanical",
+    "mechanical - flow",
+    "mechanical - loads",
+    "model properties",
+    "moments",
+    "other",
+    "overall legend",
+    "phasing",
+    "photometrics",
+    "plumbing",
+    "primary end",
+    "rebar set",
+    "releases / member forces",
+    "secondary end",
+    "segments and fittings",
+    "set",
+    "slab shape edit",
+    "structural",
+    "structural analysis",
+    "text",
+    "title text",
+    "visibility",
+))
+
+
 def _build_group_options(fm):
-    # Enumerate the full BuiltInParameterGroup enum and keep only entries that
-    # LabelUtils can resolve to a proper human-readable label.  This produces
-    # the same list shown in Revit's Family Types dialog without needing to know
-    # which groups are valid for the family's category.
+    # Enumerate available parameter groups and keep only those Revit shows in the
+    # Family Types / Create Parameter dialog.
+    # Pre-2025: enumerate BuiltInParameterGroup enum.
+    # 2025+:    enumerate GroupTypeId static ForgeTypeId properties via reflection.
     options = []
     seen = set()
 
-    try:
-        for group in System.Enum.GetValues(BuiltInParameterGroup):
-            key = str(group)
-            if key in seen:
-                continue
-            try:
-                label = LabelUtils.GetLabelFor(group)
-            except Exception:
-                continue
-            if not label or label == key:
-                # No real label — internal/invalid group
-                continue
-            seen.add(key)
-            options.append(OptionItem(label, group))
-    except Exception:
-        pass
+    if _BIPG_AVAILABLE:
+        try:
+            for group in System.Enum.GetValues(BuiltInParameterGroup):
+                key = str(group)
+                if key in seen:
+                    continue
+                try:
+                    label = LabelUtils.GetLabelFor(group)
+                except Exception:
+                    continue
+                if not label or label == key:
+                    continue
+                if label.lower() not in _FAMILY_PARAM_GROUP_LABELS:
+                    continue
+                seen.add(key)
+                options.append(OptionItem(label, group))
+        except Exception:
+            pass
+    else:
+        # Revit 2025+: use Python attribute inspection on GroupTypeId.
+        # CLR reflection (GetProperties/GetValue) is unreliable in IronPython;
+        # dir()/getattr() handles .NET static properties natively.
+        # No label-set filter needed: every GroupTypeId property is a valid family group.
+        try:
+            from Autodesk.Revit.DB import GroupTypeId
+            for _attr in dir(GroupTypeId):
+                if _attr.startswith('_'):
+                    continue
+                try:
+                    val = getattr(GroupTypeId, _attr)
+                except Exception:
+                    continue
+                if val is None:
+                    continue
+                # ForgeTypeId instances expose a TypeId string; skip nested types/methods
+                type_id_str = getattr(val, 'TypeId', None)
+                if not type_id_str or not isinstance(type_id_str, str):
+                    continue
+                if type_id_str in seen:
+                    continue
+                label = _label_for_group(val)
+                if not label:
+                    continue
+                seen.add(type_id_str)
+                options.append(OptionItem(label, val))
+        except Exception:
+            pass
 
     options.sort(key=lambda o: o.Label.lower())
     return options
 
 
 def _label_for_group(group):
+    """Return a human-readable label for a group value (ForgeTypeId or BuiltInParameterGroup)."""
+    if group is None:
+        return ""
+    # Revit 2025+: ForgeTypeId groups require GetLabelForGroup
     try:
-        return LabelUtils.GetLabelFor(group)
+        label = LabelUtils.GetLabelForGroup(group)
+        if label:
+            return label
     except Exception:
-        return str(group)
+        pass
+    # Pre-2025: BuiltInParameterGroup
+    try:
+        label = LabelUtils.GetLabelFor(group)
+        if label:
+            return label
+    except Exception:
+        pass
+    return ""
 
 
 def _build_shared_definition_options():
@@ -2569,7 +3666,7 @@ def _next_duplicate_name(base_name, existing_names):
 
 
 def _duplicate_family_parameter(family_manager, source_param, new_name):
-    group_value = source_param.Definition.ParameterGroup
+    group_value = _get_group_type(source_param.Definition)
     is_instance = bool(getattr(source_param, "IsInstance", False))
     data_type = _get_data_type(source_param.Definition)
 

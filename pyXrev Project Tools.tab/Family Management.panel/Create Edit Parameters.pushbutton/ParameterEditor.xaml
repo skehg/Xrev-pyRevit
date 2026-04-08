@@ -67,7 +67,7 @@
                               CanUserReorderColumns="True"
                               CanUserResizeColumns="True"
                               CanUserSortColumns="False"
-                              SelectionMode="Single"
+                              SelectionMode="Extended"
                               HeadersVisibility="Column"
                               GridLinesVisibility="None"
                               RowHeaderWidth="0"
@@ -83,7 +83,7 @@
                 </Grid>
             </Border>
 
-            <TabControl Grid.Column="2">
+            <TabControl Grid.Column="2" SelectionChanged="on_tab_selection_changed">
 
                 <!-- ═══════════════════════════════════════════════════════ -->
                 <!-- TAB 1: Edit Existing Parameter                         -->
@@ -428,6 +428,293 @@
                                     Click="on_reorder_apply"
                                     DockPanel.Dock="Right"/>
                         </DockPanel>
+                    </Grid>
+                </TabItem>
+
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <!-- TAB 5: Batch Edit                                       -->
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <TabItem x:Name="tabBatchEdit" Header="Batch Edit">
+                    <Grid Margin="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Selection summary -->
+                        <Border Grid.Row="0" Background="#F0F4FF" BorderBrush="#90CAF9" BorderThickness="1" CornerRadius="3" Padding="8 6" Margin="0 0 0 10">
+                            <TextBlock x:Name="txtBatchSummary"
+                                       Text="Select multiple parameters from the list on the left."
+                                       Foreground="#1565C0" TextWrapping="Wrap"/>
+                        </Border>
+
+                        <!-- Toggle Instance/Type -->
+                        <GroupBox Grid.Row="1" Header="Instance / Type" Margin="0 0 0 8" Padding="8 4 8 8">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="txtBatchToggleInfo" Text="" VerticalAlignment="Center"
+                                           Margin="0 0 10 0" Foreground="#5A5A5A" FontStyle="Italic"
+                                           TextWrapping="Wrap" MaxWidth="320"/>
+                                <Button x:Name="btnBatchToggle" Content="Toggle" Width="110" Height="28"
+                                        Click="on_batch_toggle" IsEnabled="False"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- Change Group -->
+                        <GroupBox Grid.Row="2" Header="Change Group" Margin="0 0 0 8" Padding="8 4 8 8">
+                            <StackPanel Orientation="Horizontal">
+                                <ComboBox x:Name="cmbBatchGroup" Width="220" Height="26" Margin="0 0 8 0"/>
+                                <Button x:Name="btnBatchChangeGroup" Content="Apply" Width="70" Height="26"
+                                        Click="on_batch_change_group" IsEnabled="False"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- Rename (Find / Replace) -->
+                        <GroupBox Grid.Row="3" Header="Rename" Margin="0 0 0 8" Padding="8 4 8 8">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="6"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="6"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Find:" VerticalAlignment="Center" Margin="0 0 6 0"/>
+                                <TextBox x:Name="txtBatchFind" Grid.Row="0" Grid.Column="1" Height="26" Margin="0 0 10 0"/>
+                                <TextBlock Grid.Row="0" Grid.Column="2" Text="Replace:" VerticalAlignment="Center" Margin="0 0 6 0"/>
+                                <TextBox x:Name="txtBatchReplace" Grid.Row="0" Grid.Column="3" Height="26" Margin="0 0 10 0"/>
+                                <Button x:Name="btnBatchRename" Grid.Row="0" Grid.Column="4" Content="Apply Rename"
+                                        Width="100" Height="26" Click="on_batch_prefix_suffix" IsEnabled="False"/>
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Prefix:" VerticalAlignment="Center" Margin="0 0 6 0"/>
+                                <TextBox x:Name="txtBatchPrefix" Grid.Row="2" Grid.Column="1" Height="26" Margin="0 0 10 0"/>
+                                <TextBlock Grid.Row="2" Grid.Column="2" Text="Suffix:" VerticalAlignment="Center" Margin="0 0 6 0"/>
+                                <TextBox x:Name="txtBatchSuffix" Grid.Row="2" Grid.Column="3" Height="26" Margin="0 0 10 0"/>
+                                <CheckBox x:Name="chkBatchRegex" Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="5"
+                                          Content="Use regular expression (regex) for Find"
+                                          VerticalAlignment="Center" IsChecked="False"/>
+                            </Grid>
+                        </GroupBox>
+
+                        <!-- Duplicate / Delete -->
+                        <GroupBox Grid.Row="4" Header="Other Actions" Margin="0 0 0 8" Padding="8 4 8 8">
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="btnBatchDuplicate" Content="Duplicate All" Width="100" Height="28"
+                                        Margin="0 0 8 0" Click="on_batch_duplicate" IsEnabled="False"/>
+                                <Button x:Name="btnBatchDelete" Content="Delete All" Width="90" Height="28"
+                                        Click="on_batch_delete" IsEnabled="False"
+                                        Background="#FFEBEE" Foreground="#B71C1C" BorderBrush="#EF9A9A"/>
+                            </StackPanel>
+                        </GroupBox>
+                    </Grid>
+                </TabItem>
+
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <!-- TAB 6: Import Parameters                               -->
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <TabItem x:Name="tabImport" Header="Import Parameters">
+                    <Grid Margin="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Source family picker -->
+                        <GroupBox Grid.Row="0" Header="Source Family" Margin="0 0 0 8" Padding="8 4 8 8">
+                            <DockPanel>
+                                <Button x:Name="btnImportRefresh" DockPanel.Dock="Right" Content="Refresh"
+                                        Width="70" Height="26" Margin="6 0 0 0"
+                                        Click="on_import_refresh"/>
+                                <ComboBox x:Name="cmbImportSource" Height="26"
+                                          SelectionChanged="on_import_source_changed"/>
+                            </DockPanel>
+                        </GroupBox>
+
+                        <!-- Sub-tabs: Parameters / Nested Families / Object Styles -->
+                        <TabControl x:Name="importSubTabs" Grid.Row="1" Margin="0 0 0 8"
+                                    SelectionChanged="on_import_subtab_changed">
+
+                            <!-- Parameters sub-tab -->
+                            <TabItem Header="Parameters">
+                                <Grid Margin="4">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <DockPanel Grid.Row="0" Margin="0 0 0 4">
+                                        <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0 0 6 0"
+                                                   DockPanel.Dock="Left"/>
+                                        <CheckBox x:Name="chkImportHideNonTransferable"
+                                                  Content="Hide non-transferable"
+                                                  VerticalAlignment="Center" Margin="6 0 0 0"
+                                                  IsChecked="True" DockPanel.Dock="Right"
+                                                  Checked="on_import_filter_changed"
+                                                  Unchecked="on_import_filter_changed"/>
+                                        <TextBox x:Name="txtImportSearch" Height="24"
+                                                 TextChanged="on_import_search_changed"/>
+                                    </DockPanel>
+                                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0 0 0 4">
+                                        <Button Content="Select All"  Width="80" Height="22" Margin="0 0 6 0"
+                                                Click="on_import_params_select_all"/>
+                                        <Button Content="Select None" Width="80" Height="22"
+                                                Click="on_import_params_select_none"/>
+                                    </StackPanel>
+                                    <ListView x:Name="lstImportParams" Grid.Row="2"
+                                              SelectionMode="Extended" BorderThickness="1">
+                                        <ListView.View>
+                                            <GridView>
+                                                <GridViewColumn Width="32">
+                                                    <GridViewColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Width="18"/>
+                                                        </DataTemplate>
+                                                    </GridViewColumn.CellTemplate>
+                                                </GridViewColumn>
+                                                <GridViewColumn Header="Name"      Width="160" DisplayMemberBinding="{Binding Name}"/>
+                                                <GridViewColumn Header="Group"     Width="110" DisplayMemberBinding="{Binding GroupLabel}"/>
+                                                <GridViewColumn Header="Inst/Type" Width="68"  DisplayMemberBinding="{Binding InstanceTypeLabel}"/>
+                                                <GridViewColumn Header="Shared"    Width="46"  DisplayMemberBinding="{Binding SharedLabel}"/>
+                                                <GridViewColumn Header="Formula"   Width="140" DisplayMemberBinding="{Binding Formula}"/>
+                                            </GridView>
+                                        </ListView.View>
+                                    </ListView>
+                                    <TextBlock x:Name="txtImportParamsCount" Grid.Row="3"
+                                               Margin="0 4 0 0" Foreground="#5A5A5A" FontStyle="Italic"/>
+                                </Grid>
+                            </TabItem>
+
+                            <!-- Nested Families sub-tab -->
+                            <TabItem Header="Nested Families">
+                                <Grid Margin="4">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0 0 0 4">
+                                        <CheckBox x:Name="chkImportNestedMissingOnly" Content="Load missing only"
+                                                  IsChecked="True" Margin="0 0 12 0" VerticalAlignment="Center"/>
+                                        <CheckBox x:Name="chkImportNestedReloadExisting" Content="Reload existing"
+                                                  IsChecked="False" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0 0 0 4">
+                                        <Button Content="Select All"  Width="80" Height="22" Margin="0 0 6 0"
+                                                Click="on_import_nested_select_all"/>
+                                        <Button Content="Select None" Width="80" Height="22"
+                                                Click="on_import_nested_select_none"/>
+                                    </StackPanel>
+                                    <ListView x:Name="lstImportNested" Grid.Row="2"
+                                              SelectionMode="Extended" BorderThickness="1">
+                                        <ListView.View>
+                                            <GridView>
+                                                <GridViewColumn Width="32">
+                                                    <GridViewColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Width="18"/>
+                                                        </DataTemplate>
+                                                    </GridViewColumn.CellTemplate>
+                                                </GridViewColumn>
+                                                <GridViewColumn Header="Name"     Width="200" DisplayMemberBinding="{Binding Name}"/>
+                                                <GridViewColumn Header="Category" Width="140" DisplayMemberBinding="{Binding CategoryName}"/>
+                                                <GridViewColumn Header="Status"   Width="80"  DisplayMemberBinding="{Binding Status}"/>
+                                            </GridView>
+                                        </ListView.View>
+                                    </ListView>
+                                </Grid>
+                            </TabItem>
+
+                            <!-- Object Styles sub-tab -->
+                            <TabItem Header="Object Styles">
+                                <Grid Margin="4">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <DockPanel Grid.Row="0" Margin="0 0 0 4">
+                                        <TextBlock Text="Parent:" VerticalAlignment="Center" Margin="0 0 6 0"
+                                                   DockPanel.Dock="Left"/>
+                                        <ComboBox x:Name="cmbImportStylesCategory" Height="24"
+                                                  SelectionChanged="on_import_style_category_changed"/>
+                                    </DockPanel>
+                                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0 0 0 4">
+                                        <CheckBox x:Name="chkImportStylesModel" Content="Model"
+                                                  IsChecked="True" Margin="0 0 10 0"
+                                                  Checked="on_import_filter_changed"
+                                                  Unchecked="on_import_filter_changed"/>
+                                        <CheckBox x:Name="chkImportStylesAnnotation" Content="Annotation"
+                                                  IsChecked="True" Margin="0 0 10 0"
+                                                  Checked="on_import_filter_changed"
+                                                  Unchecked="on_import_filter_changed"/>
+                                        <CheckBox x:Name="chkImportStylesImported" Content="Import"
+                                                  IsChecked="False"
+                                                  Checked="on_import_filter_changed"
+                                                  Unchecked="on_import_filter_changed"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0 0 0 4">
+                                        <Button Content="Select All"  Width="80" Height="22" Margin="0 0 6 0"
+                                                Click="on_import_styles_select_all"/>
+                                        <Button Content="Select None" Width="80" Height="22"
+                                                Click="on_import_styles_select_none"/>
+                                    </StackPanel>
+                                    <ListView x:Name="lstImportStyles" Grid.Row="3"
+                                              SelectionMode="Extended" BorderThickness="1">
+                                        <ListView.View>
+                                            <GridView>
+                                                <GridViewColumn Width="32">
+                                                    <GridViewColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Width="18"/>
+                                                        </DataTemplate>
+                                                    </GridViewColumn.CellTemplate>
+                                                </GridViewColumn>
+                                                <GridViewColumn Header="Parent"   Width="140" DisplayMemberBinding="{Binding ParentCategory}"/>
+                                                <GridViewColumn Header="Name"     Width="160" DisplayMemberBinding="{Binding Name}"/>
+                                                <GridViewColumn Header="Type"     Width="80"  DisplayMemberBinding="{Binding StyleType}"/>
+                                                <GridViewColumn Header="Status"   Width="80"  DisplayMemberBinding="{Binding Status}"/>
+                                            </GridView>
+                                        </ListView.View>
+                                    </ListView>
+                                </Grid>
+                            </TabItem>
+
+                        </TabControl>
+
+                        <!-- Options -->
+                        <GroupBox Grid.Row="2" Header="Options" Padding="8 4 8 8" Margin="0 0 0 8">
+                            <WrapPanel Orientation="Horizontal">
+                                <CheckBox x:Name="chkImportTransferFormulas" Content="Transfer formulas"
+                                          IsChecked="True"  Margin="0 0 16 4"/>
+                                <CheckBox x:Name="chkImportTransferValues"   Content="Transfer values"
+                                          IsChecked="True"  Margin="0 0 16 4"/>
+                                <CheckBox x:Name="chkImportOverwriteValues"  Content="Overwrite existing values"
+                                          IsChecked="False" Margin="0 0 16 4"/>
+                                <CheckBox x:Name="chkImportCreateMaterials"  Content="Create missing materials"
+                                          IsChecked="False" Margin="0 0 0 4"/>
+                            </WrapPanel>
+                        </GroupBox>
+
+                        <!-- Import button -->
+                        <Button x:Name="btnImportExecute" Grid.Row="3"
+                                Content="Import Selected" Height="32" Width="160"
+                                HorizontalAlignment="Right"
+                                Click="on_import_execute" IsEnabled="False"
+                                Background="#1565C0" Foreground="White"
+                                BorderBrush="#0D47A1" FontWeight="SemiBold"/>
                     </Grid>
                 </TabItem>
 
