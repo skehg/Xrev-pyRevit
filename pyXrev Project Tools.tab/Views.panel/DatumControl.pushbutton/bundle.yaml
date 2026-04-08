@@ -1,0 +1,9 @@
+title: Datum  Control
+tooltip: >
+  2D Control of Grids and Levels in plan, section, elevation and detail views.
+  Set per-side 2D extents offset from the crop box (scaled to drawing scale).
+  Toggle grid bubble / level head visibility independently per crop edge.
+  Works on the active view or multiple views selected in the Project Browser.
+  (Datums with 3D extents are automatically promoted to 2D  extents).
+author: Kent + Copilot
+highlight: True

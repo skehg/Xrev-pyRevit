@@ -1,0 +1,173 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Grid / Level Control"
+        Height="330" Width="460"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanMinimize">
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Per-side offset inputs (mm at drawing scale) -->
+        <GroupBox Grid.Row="0" Header="Offset from crop edge (mm at drawing scale)"
+                  Margin="0,0,0,10" Padding="8,4,8,8">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="8"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="8"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="20"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- TOP (centered) -->
+                <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+                      HorizontalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>   <!-- label -->
+                        <ColumnDefinition Width="60"/>    <!-- checkbox + textbox -->
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>    <!-- label + checkbox -->
+                        <RowDefinition Height="Auto"/>    <!-- textbox -->
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0"
+                               Text="Top:" VerticalAlignment="Center"
+                               Margin="0,0,6,6"/>
+
+                    <CheckBox Grid.Row="0" Grid.Column="1"
+                              x:Name="chkBubbleTop"
+                              Content="Bubble"
+                              IsChecked="True"
+                              HorizontalAlignment="Right"/>
+
+                    <TextBox Grid.Row="1" Grid.Column="1"
+                             x:Name="txtOffsetTop"
+                             Width="60" Text="10"
+                             VerticalContentAlignment="Center"
+                             Padding="4,2"
+                             HorizontalAlignment="Right"/>
+                </Grid>
+
+                <!-- LEFT (left aligned) -->
+                <Grid Grid.Row="2" Grid.Column="0"
+                      HorizontalAlignment="Left">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0"
+                               Text="Left:" VerticalAlignment="Center"
+                               Margin="0,0,6,6"/>
+
+                    <CheckBox Grid.Row="0" Grid.Column="1"
+                              x:Name="chkBubbleLeft"
+                              Content="Bubble"
+                              IsChecked="True"
+                              HorizontalAlignment="Right"/>
+
+                    <TextBox Grid.Row="1" Grid.Column="1"
+                             x:Name="txtOffsetLeft"
+                             Width="60" Text="10"
+                             VerticalContentAlignment="Center"
+                             Padding="4,2"
+                             HorizontalAlignment="Right"/>
+                </Grid>
+
+                <!-- RIGHT (right aligned) -->
+                <Grid Grid.Row="2" Grid.Column="2"
+                      HorizontalAlignment="Right">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0"
+                               Text="Right:" VerticalAlignment="Center"
+                               Margin="0,0,6,10"/>
+
+                    <CheckBox Grid.Row="0" Grid.Column="1"
+                              x:Name="chkBubbleRight"
+                              Content="Bubble"
+                              IsChecked="True"
+                              HorizontalAlignment="Right"/>
+
+                    <TextBox Grid.Row="1" Grid.Column="1"
+                             x:Name="txtOffsetRight"
+                             Width="60" Text="10"
+                             VerticalContentAlignment="Center"
+                             Padding="4,2"
+                             HorizontalAlignment="Right"/>
+                </Grid>
+
+                <!-- BOTTOM (centered, checkbox under textbox) -->
+                <Grid Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3"
+                    HorizontalAlignment="Center">
+
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>   <!-- label -->
+                        <ColumnDefinition Width="60"/>    <!-- textbox + checkbox -->
+                    </Grid.ColumnDefinitions>
+
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>    <!-- label -->
+                        <RowDefinition Height="Auto"/>    <!-- textbox -->
+                        <RowDefinition Height="Auto"/>    <!-- checkbox -->
+                    </Grid.RowDefinitions>
+
+                    <!-- Label -->
+                    <TextBlock Grid.Row="1" Grid.Column="0"
+                            Text="Bottom:" VerticalAlignment="Center"
+                            Margin="0,0,6,0"/>
+
+                    <!-- Textbox -->
+                    <TextBox Grid.Row="1" Grid.Column="1"
+                            x:Name="txtOffsetBottom"
+                            Width="60" Text="10"
+                            VerticalContentAlignment="Center"
+                            Padding="4,2"
+                            HorizontalAlignment="Right"/>
+
+                    <!-- Checkbox BELOW textbox -->
+                    <CheckBox Grid.Row="2" Grid.Column="1"
+                            x:Name="chkBubbleBottom"
+                            Content="Bubble"
+                            IsChecked="True"
+                            HorizontalAlignment="Right"/>
+                </Grid>
+            </Grid>
+        </GroupBox>
+
+        <CheckBox x:Name="chkGrids"  Grid.Row="1" Content="Adjust Grids"
+                  IsChecked="True" Margin="0,0,0,6"/>
+        <CheckBox x:Name="chkLevels" Grid.Row="2" Content="Adjust Levels"
+                  IsChecked="True" Margin="0,0,0,6"/>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button x:Name="btnOK"     Content="OK"     Width="80" Margin="0,0,6,0"/>
+            <Button x:Name="btnCancel" Content="Cancel" Width="80"/>
+        </StackPanel>
+    </Grid>
+</Window>
