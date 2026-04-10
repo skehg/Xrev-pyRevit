@@ -79,6 +79,23 @@ class DatumExtentsForm(forms.WPFWindow):
         forms.WPFWindow.__init__(self, xaml_file)
         self.btnOK.Click     += self.on_ok
         self.btnCancel.Click += self.on_cancel
+        self.tglEditOffset.Checked   += self._on_toggle_offset
+        self.tglEditOffset.Unchecked += self._on_toggle_offset
+        self.tglEditBubbles.Checked   += self._on_toggle_bubbles
+        self.tglEditBubbles.Unchecked += self._on_toggle_bubbles
+        # Apply initial state
+        self._on_toggle_offset(None, None)
+        self._on_toggle_bubbles(None, None)
+
+    def _on_toggle_offset(self, sender, args):
+        enabled = bool(self.tglEditOffset.IsChecked)
+        for name in ("txtOffsetTop", "txtOffsetBottom", "txtOffsetLeft", "txtOffsetRight"):
+            getattr(self, name).IsEnabled = enabled
+
+    def _on_toggle_bubbles(self, sender, args):
+        enabled = bool(self.tglEditBubbles.IsChecked)
+        for name in ("chkBubbleTop", "chkBubbleBottom", "chkBubbleLeft", "chkBubbleRight"):
+            getattr(self, name).IsEnabled = enabled
 
     def on_ok(self, sender, args):
         self.DialogResult = True
@@ -101,32 +118,43 @@ for side, key in _BUBBLE_KEYS.items():
 if not dlg.ShowDialog():
     sys.exit(0)
 
+adjust_grids  = dlg.chkGrids.IsChecked
+adjust_levels = dlg.chkLevels.IsChecked
+edit_offset   = bool(dlg.tglEditOffset.IsChecked)
+edit_bubbles  = bool(dlg.tglEditBubbles.IsChecked)
+
+if not adjust_grids and not adjust_levels:
+    forms.alert("Both Grids and Levels are unchecked \u2014 nothing to do.", exitscript=True)
+
+if not edit_offset and not edit_bubbles:
+    forms.alert("Both Edit Offset and Edit Bubbles are off \u2014 nothing to do.", exitscript=True)
+
 _offsets_mm = {}
 for side, key in _ENV_KEYS.items():
     box = getattr(dlg, "txtOffset" + side.capitalize())
-    try:
-        val = float(box.Text)
-        if val < 0:
-            raise ValueError()
-    except ValueError:
-        forms.alert(
-            "'{}' offset must be a non-negative number.".format(side.capitalize()),
-            exitscript=True,
-        )
+    if edit_offset:
+        try:
+            val = float(box.Text)
+            if val < 0:
+                raise ValueError()
+        except ValueError:
+            forms.alert(
+                "'{}' offset must be a non-negative number.".format(side.capitalize()),
+                exitscript=True,
+            )
+        _pyscript.set_envvar(key, box.Text)
+    else:
+        try:
+            val = float(box.Text)
+        except ValueError:
+            val = 0.0
     _offsets_mm[side] = val
-    _pyscript.set_envvar(key, box.Text)
 
 _bubbles = {}
 for side, key in _BUBBLE_KEYS.items():
     checked = bool(getattr(dlg, "chkBubble" + side.capitalize()).IsChecked)
     _bubbles[side] = checked
     _pyscript.set_envvar(key, "1" if checked else "0")
-
-adjust_grids  = dlg.chkGrids.IsChecked
-adjust_levels = dlg.chkLevels.IsChecked
-
-if not adjust_grids and not adjust_levels:
-    forms.alert("Both Grids and Levels are unchecked — nothing to do.", exitscript=True)
 
 # Warn if multiple views are about to be modified
 if len(target_views) > 1:
@@ -175,7 +203,8 @@ def _get_ref_curve(datum, v):
     return None
 
 
-def _set_datum_extent(datum, v, corners, local_x, local_y, bb, offsets_ft, bubbles):
+def _set_datum_extent(datum, v, corners, local_x, local_y, bb, offsets_ft, bubbles,
+                      edit_offset=True, edit_bubbles=True):
     """Set ViewSpecific extents and bubble visibility using per-side settings."""
     ref_curve = _get_ref_curve(datum, v)
     if ref_curve is None:
@@ -222,17 +251,20 @@ def _set_datum_extent(datum, v, corners, local_x, local_y, bb, offsets_ft, bubbl
 
     datum.SetDatumExtentType(DatumEnds.End0, v, DatumExtentType.ViewSpecific)
     datum.SetDatumExtentType(DatumEnds.End1, v, DatumExtentType.ViewSpecific)
-    datum.SetCurveInView(DatumExtentType.ViewSpecific, v, new_line)
 
-    # End0 = t_min side, End1 = t_max side
-    if bubbles[side_min]:
-        datum.ShowBubbleInView(DatumEnds.End0, v)
-    else:
-        datum.HideBubbleInView(DatumEnds.End0, v)
-    if bubbles[side_max]:
-        datum.ShowBubbleInView(DatumEnds.End1, v)
-    else:
-        datum.HideBubbleInView(DatumEnds.End1, v)
+    if edit_offset:
+        datum.SetCurveInView(DatumExtentType.ViewSpecific, v, new_line)
+
+    if edit_bubbles:
+        # End0 = t_min side, End1 = t_max side
+        if bubbles[side_min]:
+            datum.ShowBubbleInView(DatumEnds.End0, v)
+        else:
+            datum.HideBubbleInView(DatumEnds.End0, v)
+        if bubbles[side_max]:
+            datum.ShowBubbleInView(DatumEnds.End1, v)
+        else:
+            datum.HideBubbleInView(DatumEnds.End1, v)
 
     return True
 
@@ -253,7 +285,8 @@ with revit.Transaction("Set Datum Extents from Crop"):
         if adjust_grids:
             for g in FilteredElementCollector(doc, v.Id).OfClass(Grid).ToElements():
                 try:
-                    if _set_datum_extent(g, v, corners, local_x, local_y, bb, offsets_ft, _bubbles):
+                    if _set_datum_extent(g, v, corners, local_x, local_y, bb, offsets_ft, _bubbles,
+                                         edit_offset, edit_bubbles):
                         n_grids += 1
                     else:
                         failures.append("[{}] Grid '{}': could not read extent curve".format(v.Name, g.Name))
@@ -263,7 +296,8 @@ with revit.Transaction("Set Datum Extents from Crop"):
         if adjust_levels:
             for lv in FilteredElementCollector(doc, v.Id).OfClass(Level).ToElements():
                 try:
-                    if _set_datum_extent(lv, v, corners, local_x, local_y, bb, offsets_ft, _bubbles):
+                    if _set_datum_extent(lv, v, corners, local_x, local_y, bb, offsets_ft, _bubbles,
+                                          edit_offset, edit_bubbles):
                         n_levels += 1
                     else:
                         failures.append("[{}] Level '{}': could not read extent curve".format(v.Name, lv.Name))
