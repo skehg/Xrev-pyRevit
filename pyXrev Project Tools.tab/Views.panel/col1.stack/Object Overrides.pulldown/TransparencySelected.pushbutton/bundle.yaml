@@ -1,0 +1,6 @@
+title: Transparency
+tooltip: >
+  Apply Override Graphics in View by element and set transparency
+  for the currently selected elements in the active view.
+author: Kent + Copilot
+highlight: True

@@ -1,0 +1,6 @@
+title: Reset Overrides
+tooltip: >
+  Clear all Override Graphics in View settings by element for the
+  currently selected elements in the active view.
+author: Kent + Copilot
+highlight: True

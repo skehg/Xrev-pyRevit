@@ -1,0 +1,6 @@
+title: Object Overrides
+tooltip: Tools for object display overrides.
+items:
+   - HalftoneSelected
+   - TransparencySelected
+   - ResetOverridesSelected

@@ -1,0 +1,6 @@
+title: Toggle Ref Planes
+tooltip: >
+  Enable Temporary View Properties if needed, then toggle
+  Reference Plane visibility in the active view.
+author: Kent + Copilot
+highlight: True

@@ -1,0 +1,6 @@
+title: Halftone
+tooltip: >
+  Apply Override Graphics in View by element and turn on halftone
+  for the currently selected elements in the active view.
+author: Kent + Copilot
+highlight: True

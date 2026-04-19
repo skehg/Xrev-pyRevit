@@ -1,2 +1,7 @@
 layout:
   - CreateViews
+  - CopyDraftingViews
+  - Object Overrides
+  - ToggleReferencePlanes
+  - SectionToElevation
+  - DatumControl
