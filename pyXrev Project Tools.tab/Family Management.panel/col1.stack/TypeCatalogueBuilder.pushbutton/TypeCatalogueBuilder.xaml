@@ -1,0 +1,137 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Type Catalogue Builder"
+        Width="900" Height="680"
+        MinWidth="700" MinHeight="500"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="180"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Row 0: Parameter selection dual-listbox -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="56"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="56"/>
+            </Grid.ColumnDefinitions>
+
+            <GroupBox Grid.Column="0" Header="Available Type Parameters">
+                <ListBox x:Name="lstAvailable"
+                         DisplayMemberPath="Name"
+                         SelectionMode="Extended"
+                         SelectionChanged="on_available_selection_changed"
+                         MouseDoubleClick="on_available_double_click"/>
+            </GroupBox>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <Button x:Name="btnMoveAllRight" Content="&#x25B6;&#x25B6;" Height="28" Width="44" Margin="0,3"
+                        Click="on_move_all_right" IsEnabled="False"/>
+                <Button x:Name="btnMoveRight" Content="&#x25B6;" Height="28" Width="44" Margin="0,3"
+                        Click="on_move_right" IsEnabled="False"/>
+                <Button x:Name="btnMoveLeft"  Content="&#x25C0;" Height="28" Width="44" Margin="0,3"
+                        Click="on_move_left"  IsEnabled="False"/>
+                <Button x:Name="btnMoveAllLeft"  Content="&#x25C0;&#x25C0;" Height="28" Width="44" Margin="0,3"
+                        Click="on_move_all_left"  IsEnabled="False"/>
+            </StackPanel>
+
+            <GroupBox Grid.Column="2" Header="Selected  (catalogue columns, in order)">
+                <ListBox x:Name="lstSelected"
+                         DisplayMemberPath="Name"
+                         SelectionMode="Extended"
+                         SelectionChanged="on_selected_changed"
+                         MouseDoubleClick="on_selected_double_click"/>
+            </GroupBox>
+
+            <StackPanel Grid.Column="3" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <Button x:Name="btnMoveTop"   Content="&#x25B2;&#x25B2;" Height="28" Width="44" Margin="0,3"
+                        Click="on_move_top"   IsEnabled="False"/>
+                <Button x:Name="btnMoveUp"    Content="&#x25B2;"         Height="28" Width="44" Margin="0,3"
+                        Click="on_move_up"    IsEnabled="False"/>
+                <Button x:Name="btnMoveDown"  Content="&#x25BC;"         Height="28" Width="44" Margin="0,3"
+                        Click="on_move_down"  IsEnabled="False"/>
+                <Button x:Name="btnMoveBottom" Content="&#x25BC;&#x25BC;" Height="28" Width="44" Margin="0,3"
+                        Click="on_move_bottom" IsEnabled="False"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Row 1: DataGrid -->
+        <GroupBox Grid.Row="1"
+                Header="Type values  (editable — supports formulas and fill operations)"
+                Margin="0,6,0,0">
+
+            <DataGrid x:Name="dgTypes"
+                    AutoGenerateColumns="True"
+                    CanUserAddRows="True"
+                    CanUserDeleteRows="True"
+                    CanUserReorderColumns="False"
+                    CanUserResizeRows="False"
+                    HeadersVisibility="Column"
+                    FrozenColumnCount="1"
+                    SelectionUnit="Cell"
+                    SelectionMode="Extended"
+                    Margin="4"
+                    IsReadOnly="False">
+
+                <!-- Excel‑style header appearance -->
+                <DataGrid.ColumnHeaderStyle>
+                    <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="FontWeight" Value="Bold"/>
+                        <Setter Property="Background" Value="#EEE"/>
+                        <Setter Property="BorderBrush" Value="#CCC"/>
+                        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                        <Setter Property="Padding" Value="6,3"/>
+                    </Style>
+                </DataGrid.ColumnHeaderStyle>
+
+                <!-- Right‑click menu for Excel‑style fill operations -->
+                <DataGrid.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Fill Down"  x:Name="miFillDown"/>                        
+                    </ContextMenu>
+                </DataGrid.ContextMenu>
+
+            </DataGrid>
+        </GroupBox>
+
+        <!-- Row 2: Formula status -->
+        <TextBlock x:Name="lblFormulaStatus" Grid.Row="2"
+                   Margin="4,3,4,0" FontStyle="Italic" FontSize="11"
+                   Foreground="#555555"/>
+
+        <!-- Row 3: Output path -->
+        <Grid Grid.Row="3" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Output file:"
+                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBox x:Name="txtOutputPath" Grid.Column="1"
+                     VerticalAlignment="Center" Height="26"/>
+            <Button Grid.Column="2" Content="&#8230;" Width="30" Height="26"
+                    Margin="6,0,0,0" Click="on_browse"/>
+        </Grid>
+
+        <!-- Row 4: Action buttons -->
+        <Grid Grid.Row="4" Margin="0,6,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0" x:Name="btnBuild"
+                    Content="Build Type Catalogue" Height="32"
+                    Margin="0,0,6,0" Click="on_build"/>
+            <Button Grid.Column="1" Content="Close" Height="32"
+                    Width="80" Click="on_close"/>
+        </Grid>
+    </Grid>
+</Window>

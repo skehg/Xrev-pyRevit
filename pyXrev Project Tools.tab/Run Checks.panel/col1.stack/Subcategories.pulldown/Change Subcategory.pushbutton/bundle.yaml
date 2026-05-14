@@ -1,0 +1,22 @@
+title:
+  en_us: 2-Change Subcategories
+  fr_fr: french title
+  es_es: spanish title
+tooltip: 
+  en_us: ___Description___
+    
+    Operates in Project Mode.
+
+    Changes the subcategories of families based on a CSV file exported from the '1-List Subcategories by Family' button.
+
+    Deletes any redundant subcategories after the change.
+
+    ___How to Use___
+    1. Click the button.
+
+    2. Browse to the CSV file previously created and edited from the '1-List Subcategories by Family' button.
+    
+    3. The tool will process the CSV file and make the subcategory changes in the Revit project.
+  fr_fr: french tooltip
+  es_es: spanish tooltip
+# highlight: new

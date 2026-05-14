@@ -1,0 +1,7 @@
+title: Type Catalogue Builder
+tooltip: >
+  Diagnostic: inspects Type parameters in the active family and prints the
+  DataType and Units strings needed to build a type catalogue header row.
+  Works only in the Family Editor.
+author: Kent + Copilot
+highlight: False

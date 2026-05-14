@@ -1,0 +1,6 @@
+title: Copy Drafting Views
+tooltip: >
+  Copy Drafting Views from the current document to one or more other open documents.
+  Handles duplicate names by appending a counter suffix.
+author: Kent + Copilot
+highlight: True

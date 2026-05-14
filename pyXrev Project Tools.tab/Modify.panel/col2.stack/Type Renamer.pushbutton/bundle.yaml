@@ -1,0 +1,4 @@
+title: Type Renamer
+tooltip: Rename multiple family types quickly and efficiently.
+author: Xrev
+script: script.py

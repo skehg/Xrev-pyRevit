@@ -1,0 +1,10 @@
+title: Section to Elevation
+tooltip: >
+  Converts selected Section view(s) into Elevation views with matching
+  crop regions, view depth, scale, phase and view template.
+  Prefixes new elevations with "Sec_".
+  All view-specific detail elements (lines, text, dimensions, tags,
+  filled regions) are copied from the section into the new elevation.
+  Original sections are kept.
+author: Kent + Copilot
+highlight: True

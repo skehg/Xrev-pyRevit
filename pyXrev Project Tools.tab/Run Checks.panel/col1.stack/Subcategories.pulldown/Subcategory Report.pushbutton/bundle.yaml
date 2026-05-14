@@ -1,0 +1,35 @@
+title:
+  en_us: 1-List Subcategories by Family
+  fr_fr: french title
+  es_es: spanish title
+tooltip: 
+  en_us: ___Description___
+
+    Operates in Project Mode.  
+
+    Creates a CSV file listing all subcategories grouped by family.
+
+    Inludes an extra column called New Subcategory that can be used to swap subcategories in 2-Change Subcategory.
+
+    Deletes any subcategories that are project only subcategories (not defined in any family).
+
+
+    ___How to Use___
+
+    1. Click the button.
+
+    2. Browse to a folder to save the CSV file.
+
+    3. Select the Category to report on.
+
+    4. Select any subcategories that are found in the project only from the list presented. Accept the warning about these subcategories being deleted.
+
+    5. Open the CSV file in Excel (or similar) and make any desired changes to the 'New Subcategory' column.
+
+    6. Save the CSV file.
+    
+    7. Use the '2-Change Subcategories' button to apply the changes back into the Revit project.
+  fr_fr: french tooltip
+  es_es: spanish tooltip
+Author: Kent Watson
+# highlight: new

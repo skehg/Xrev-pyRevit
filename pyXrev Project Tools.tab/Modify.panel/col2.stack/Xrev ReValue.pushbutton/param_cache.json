@@ -1,0 +1,30 @@
+{
+  "selections": {}, 
+  "parameters": [
+    "Absorptance", 
+    "Assembly Code", 
+    "Assembly Description", 
+    "Coarse Scale Fill Color", 
+    "Cost", 
+    "Default Thickness", 
+    "Description", 
+    "Edited by", 
+    "Export Type to IFC", 
+    "Export Type to IFC As", 
+    "Family Name", 
+    "Heat Transfer Coefficient (U)", 
+    "Keynote", 
+    "Manufacturer", 
+    "Model", 
+    "Roughness", 
+    "Thermal Mass", 
+    "Thermal Resistance (R)", 
+    "Type Comments", 
+    "Type IFC Predefined Type", 
+    "Type IfcGUID", 
+    "Type Mark", 
+    "Type Name", 
+    "URL", 
+    "Workset"
+  ]
+}

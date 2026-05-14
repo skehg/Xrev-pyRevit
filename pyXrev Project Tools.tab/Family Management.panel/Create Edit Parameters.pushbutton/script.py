@@ -1921,6 +1921,15 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
         initial_value_text = (self.txtNewInitialValue.Text or "").strip()
         initial_formula_text = self._rtb_get_text(self.txtNewFormula).strip()
 
+        selected_group_value = group_value
+        selected_group_label = _label_for_group(selected_group_value) or str(selected_group_value)
+        used_fallback_group = False
+        if not _is_user_assignable_group(self.fm, selected_group_value):
+            # Defensive guard: keep creation working if an unassignable group slips
+            # through from cached UI state or version/API edge cases.
+            group_value = _default_group_type_general()
+            used_fallback_group = True
+
         try:
             with revit.Transaction("Create Family Parameter"):
                 if is_shared:
@@ -1944,7 +1953,15 @@ class ParameterEditorWindow(FormulaEditorHighlightMixin, forms.WPFWindow):
         if not is_shared:
             self.txtNewName.Text = ""
 
-        self._set_status("Created parameter '{}'.".format(new_name), "ok")
+        if used_fallback_group:
+            self._set_status(
+                "Created parameter '{}' in 'General' because '{}' cannot accept new parameters.".format(
+                    new_name, selected_group_label
+                ),
+                "ok",
+            )
+        else:
+            self._set_status("Created parameter '{}'.".format(new_name), "ok")
         self._reload_parameter_items(select_name=new_name)
         self._populate_sort_groups()
 
@@ -3399,12 +3416,51 @@ _FAMILY_PARAM_GROUP_LABELS = frozenset((
 def _build_group_options(fm):
     # Enumerate available parameter groups and keep only those Revit shows in the
     # Family Types / Create Parameter dialog.
-    # Pre-2025: enumerate BuiltInParameterGroup enum.
-    # 2025+:    enumerate GroupTypeId static ForgeTypeId properties via reflection.
+    # Revit 2023+: prefer GroupTypeId (ForgeTypeId) values because
+    # FamilyManager.AddParameter expects ForgeTypeId for group arguments.
+    # Revit 2020-2022: fall back to BuiltInParameterGroup enum values.
     options = []
     seen = set()
 
-    if _BIPG_AVAILABLE:
+    has_group_type_id = False
+    try:
+        from Autodesk.Revit.DB import GroupTypeId
+        has_group_type_id = True
+    except Exception:
+        has_group_type_id = False
+
+    if has_group_type_id:
+        # Revit 2023+: use Python attribute inspection on GroupTypeId.
+        # CLR reflection (GetProperties/GetValue) is unreliable in IronPython;
+        # dir()/getattr() handles .NET static properties natively.
+        try:
+            for _attr in dir(GroupTypeId):
+                if _attr.startswith('_'):
+                    continue
+                try:
+                    val = getattr(GroupTypeId, _attr)
+                except Exception:
+                    continue
+                if val is None:
+                    continue
+                # ForgeTypeId instances expose a TypeId string; skip nested types/methods.
+                type_id_str = getattr(val, 'TypeId', None)
+                if not type_id_str or not isinstance(type_id_str, str):
+                    continue
+                if type_id_str in seen:
+                    continue
+                label = _label_for_group(val)
+                if not label:
+                    continue
+                if not _is_user_assignable_group(fm, val):
+                    continue
+                seen.add(type_id_str)
+                options.append(OptionItem(label, val))
+        except Exception:
+            pass
+
+    if (not options) and _BIPG_AVAILABLE:
+        # Revit 2020-2022: use BuiltInParameterGroup enum.
         try:
             for group in System.Enum.GetValues(BuiltInParameterGroup):
                 key = str(group)
@@ -3416,39 +3472,10 @@ def _build_group_options(fm):
                     continue
                 if not label or label == key:
                     continue
-                if label.lower() not in _FAMILY_PARAM_GROUP_LABELS:
+                if not _is_user_assignable_group(fm, group):
                     continue
                 seen.add(key)
                 options.append(OptionItem(label, group))
-        except Exception:
-            pass
-    else:
-        # Revit 2025+: use Python attribute inspection on GroupTypeId.
-        # CLR reflection (GetProperties/GetValue) is unreliable in IronPython;
-        # dir()/getattr() handles .NET static properties natively.
-        # No label-set filter needed: every GroupTypeId property is a valid family group.
-        try:
-            from Autodesk.Revit.DB import GroupTypeId
-            for _attr in dir(GroupTypeId):
-                if _attr.startswith('_'):
-                    continue
-                try:
-                    val = getattr(GroupTypeId, _attr)
-                except Exception:
-                    continue
-                if val is None:
-                    continue
-                # ForgeTypeId instances expose a TypeId string; skip nested types/methods
-                type_id_str = getattr(val, 'TypeId', None)
-                if not type_id_str or not isinstance(type_id_str, str):
-                    continue
-                if type_id_str in seen:
-                    continue
-                label = _label_for_group(val)
-                if not label:
-                    continue
-                seen.add(type_id_str)
-                options.append(OptionItem(label, val))
         except Exception:
             pass
 
@@ -3475,6 +3502,32 @@ def _label_for_group(group):
     except Exception:
         pass
     return ""
+
+
+def _is_user_assignable_group(fm, group):
+    """Return True only for groups that can accept new family parameters."""
+    if group is None:
+        return False
+
+    # Preferred path: Revit API check (supports both legacy enum and ForgeTypeId).
+    try:
+        checker = getattr(fm, "IsUserAssignableParameterGroup", None)
+        if callable(checker):
+            return bool(checker(group))
+    except Exception:
+        pass
+
+    try:
+        from Autodesk.Revit.DB import FamilyManager
+        checker = getattr(FamilyManager, "IsUserAssignableParameterGroup", None)
+        if callable(checker):
+            return bool(checker(group))
+    except Exception:
+        pass
+
+    # Fallback for older/missing APIs: keep groups from Revit's family dialog set.
+    label = _label_for_group(group)
+    return bool(label and label.lower() in _FAMILY_PARAM_GROUP_LABELS)
 
 
 def _build_shared_definition_options():

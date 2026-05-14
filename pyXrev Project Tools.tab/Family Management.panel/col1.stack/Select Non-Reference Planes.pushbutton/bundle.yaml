@@ -1,0 +1,6 @@
+title: Select Non-Reference Planes
+tooltip: >
+  Select all reference planes in the active family
+  where Is Reference is set to Not a Reference.
+author: Kent + Copilot
+highlight: True

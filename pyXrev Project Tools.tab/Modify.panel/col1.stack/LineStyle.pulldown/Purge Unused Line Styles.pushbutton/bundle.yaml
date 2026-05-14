@@ -1,0 +1,4 @@
+title:
+  en_us: Purge Unused Line Styles
+tooltip:
+  en_us: Find and delete unused project line styles that are not currently assigned to curves in the active Revit project.

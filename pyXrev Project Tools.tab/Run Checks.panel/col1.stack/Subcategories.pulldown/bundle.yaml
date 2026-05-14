@@ -1,0 +1,12 @@
+title:
+  en_us: Manage Subcategories
+  fr_fr: french title
+  es_es: spanish title
+layout:
+  - Subcategory Report
+  - Change Subcategory
+tooltip:
+  en_us: Operates in Project Mode.
+    Tools to report on and change family subcategories based on CSV files.
+  fr_fr: french tooltip
+  es_es: spanish tooltip

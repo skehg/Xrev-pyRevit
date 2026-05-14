@@ -59,7 +59,9 @@ def get_group_info(fp):
         if callable(get_group_type_id):
             group_type_id = get_group_type_id()
             if group_type_id is not None:
-                group_type_id_text = str(group_type_id)
+                # Use .TypeId (stable string) not str() which returns the object
+                # repr (memory address) in IronPython, making every param unique.
+                group_type_id_text = getattr(group_type_id, "TypeId", None) or str(group_type_id)
                 label = group_type_id_text
                 get_label_for_group = getattr(LabelUtils, "GetLabelForGroup", None)
                 if callable(get_label_for_group):

@@ -1,0 +1,6 @@
+title: Edit Walls
+tooltip: Tools for flipping and splitting walls.
+items:
+   - FlipCentreline
+   - FlipCore
+   - Split Wall

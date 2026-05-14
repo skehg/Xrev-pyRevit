@@ -1,0 +1,4 @@
+# bundle.yaml for NewPushButton
+title: Scopebox Report
+tooltip: Reports on scope boxes.
+context: zero-doc

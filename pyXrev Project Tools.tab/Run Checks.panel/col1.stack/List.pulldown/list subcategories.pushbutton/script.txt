@@ -1,0 +1,126 @@
+# -*- coding: utf-8 -*-
+"""
+Export Categories and Subcategories to CSV
+
+This pyRevit script lists all categories and their subcategories in the current Revit project,
+including relevant identifiers, and exports the data to a CSV file with clear headers.
+
+- Category Name
+- Category Id
+- BuiltInCategory (if available)
+- Subcategory Name (if any)
+- Subcategory Id (if any)
+- Parent Category Name (for subcategories)
+
+Tested with Revit 2021–2025 and pyRevit 4.8.13+ / 5.x (IronPython 2.7).
+"""
+
+__title__ = "Export Categories to CSV"
+__author__ = "Your Name"
+__doc__ = "Exports all categories and subcategories in the current project to a CSV file."
+
+# --- Imports ---
+from pyrevit import revit, script, forms
+import clr
+
+# Import Revit API classes
+clr.AddReference("RevitAPI")
+from Autodesk.Revit.DB import Category, BuiltInCategory
+
+# --- Helper Functions ---
+
+def get_builtincategory_str(category):
+    """
+    Returns the BuiltInCategory enum name for a category, if available.
+    Returns empty string if not a built-in category.
+    """
+    try:
+        bic = getattr(category, 'BuiltInCategory', None)
+        if bic is not None:
+            return str(bic)
+    except Exception:
+        pass
+    return ""
+
+def safe_getattr(obj, attr, default=""):
+    """
+    Safely gets an attribute, returns default if not present or on error.
+    """
+    try:
+        return getattr(obj, attr, default)
+    except Exception:
+        return default
+
+# --- Main Logic ---
+
+doc = revit.doc
+
+# Prepare CSV header
+csv_data = [
+    [
+        "Category Name",
+        "Category Id",
+        "BuiltInCategory",
+        "Subcategory Name",
+        "Subcategory Id",
+        "Parent Category Name"
+    ]
+]
+
+# Iterate all categories in the document
+for category in doc.Settings.Categories:
+    cat_name = category.Name
+    cat_id = category.Id.IntegerValue
+    cat_bic = get_builtincategory_str(category)
+    # For top-level categories, output a row with empty subcategory fields
+    csv_data.append([
+        cat_name,
+        cat_id,
+        cat_bic,
+        "",  # Subcategory Name
+        "",  # Subcategory Id
+        ""   # Parent Category Name
+    ])
+    # If category has subcategories, iterate them
+    subcats = safe_getattr(category, "SubCategories", None)
+    if subcats and subcats.Size > 0:
+        for subcat in subcats:
+            subcat_name = subcat.Name
+            subcat_id = subcat.Id.IntegerValue
+            subcat_bic = get_builtincategory_str(subcat)
+            parent_name = safe_getattr(subcat, "Parent", None)
+            parent_name = parent_name.Name if parent_name else cat_name
+            csv_data.append([
+                cat_name,
+                cat_id,
+                cat_bic,
+                subcat_name,
+                subcat_id,
+                parent_name
+            ])
+
+# --- Prompt User for Save Location ---
+
+csv_path = forms.save_file(
+    file_ext='csv',
+    title='Save Categories and Subcategories CSV'
+)
+
+if not csv_path:
+    forms.alert("Export cancelled. No file was saved.", exitscript=True)
+
+# --- Write CSV File ---
+
+try:
+    script.dump_csv(csv_data, csv_path)
+    forms.alert(
+        "Export successful!\n\nFile saved to:\n{}".format(csv_path),
+        title="Export Complete"
+    )
+    # Optionally, open the folder in Explorer
+    script.show_file_in_explorer(csv_path)
+except Exception as e:
+    forms.alert(
+        "An error occurred while exporting the CSV:\n\n{}".format(str(e)),
+        exitscript=True
+    )
