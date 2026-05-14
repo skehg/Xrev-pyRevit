@@ -1,12 +1,6 @@
 title: List Items
-  en_us: Manage Subcategories
-  fr_fr: french title
-  es_es: spanish title
 layout:
   - List Shared Parameters
   - list subcategories
-tooltip:
-  en_us: Operates in Project Mode.
-    List shared parameters or subcategories
-  fr_fr: french tooltip
-  es_es: spanish tooltip
+tooltip: Operates in Project Mode.
+  List shared parameters or subcategories
