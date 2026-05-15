@@ -72,6 +72,9 @@ def build_tokenizer(delimiters):
 tokenize = build_tokenizer(DEFAULT_DELIMITERS)
 
 VAL_EXPR_REGEX = re.compile(r'\{([^{}]+)\}')
+NUMERIC_REGEX = re.compile(r'^\d+$')
+ALPHA_REGEX = re.compile(r'^[A-Za-z]+$')
+MIXED_SUFFIX_NUM_REGEX = re.compile(r'^(.*?)(\d+)$')
 
 def _parse_val_expression(expr):
     """Parse the inside of {...}.
@@ -231,6 +234,85 @@ def _resolve_window(tokens, start_idx, end_spec):
     return tokens[start_pos:end_pos + 1]
 
 
+def _alpha_to_int(text):
+    """Convert alpha sequence (A..Z, AA..) to 1-based integer."""
+    total = 0
+    for ch in text.upper():
+        total = (total * 26) + (ord(ch) - ord('A') + 1)
+    return total
+
+
+def _int_to_alpha(num):
+    """Convert 1-based integer to alpha sequence (A..Z, AA..)."""
+    if num < 1:
+        return ''
+
+    chars = []
+    while num > 0:
+        num, rem = divmod(num - 1, 26)
+        chars.append(chr(ord('A') + rem))
+    chars.reverse()
+    return ''.join(chars)
+
+
+def build_counter_generator(start_text, increment_text):
+    """Build counter generator supporting numeric, alpha, and prefix+numeric."""
+    start_text = '' if start_text is None else str(start_text).strip()
+    increment_text = '' if increment_text is None else str(increment_text).strip()
+
+    if not start_text:
+        return None, 'Start value is required when counter is enabled.'
+
+    if not increment_text:
+        increment_text = '1'
+
+    try:
+        increment = int(increment_text)
+    except Exception:
+        return None, 'Increment value must be an integer.'
+
+    if increment < 0:
+        return None, 'Increment value must be 0 or greater.'
+
+    if NUMERIC_REGEX.match(start_text):
+        width = len(start_text)
+        base = int(start_text)
+
+        def _numeric_counter(index):
+            value = base + (index * increment)
+            return str(value).zfill(width)
+
+        return _numeric_counter, None
+
+    if ALPHA_REGEX.match(start_text):
+        base = _alpha_to_int(start_text)
+        is_lower = start_text.islower()
+
+        def _alpha_counter(index):
+            value = base + (index * increment)
+            alpha = _int_to_alpha(value)
+            if is_lower:
+                return alpha.lower()
+            return alpha
+
+        return _alpha_counter, None
+
+    match = MIXED_SUFFIX_NUM_REGEX.match(start_text)
+    if match and match.group(1):
+        prefix = match.group(1)
+        suffix = match.group(2)
+        width = len(suffix)
+        base = int(suffix)
+
+        def _mixed_counter(index):
+            value = base + (index * increment)
+            return '{}{}'.format(prefix, str(value).zfill(width))
+
+        return _mixed_counter, None
+
+    return None, 'Unsupported start format. Use numeric, alphabetic, or prefix+numeric (e.g. RM01).'
+
+
 def apply_pattern(input_text, pattern, param_dict, tokenizer_func=None):
     """Apply pattern to input_text using tokenization and parameter substitution.
     
@@ -243,6 +325,9 @@ def apply_pattern(input_text, pattern, param_dict, tokenizer_func=None):
     
     def replace_match(m):
         inner = m.group(1).strip()
+
+        if inner.lower() == 'count':
+            return param_dict.get('count', '')
         
         # Try parameter substitution first ({paramN})
         if inner.startswith('param'):
@@ -353,6 +438,46 @@ def _safe_set_element_name(element, new_name):
         pass
     
     return False
+
+
+def _transactional_set_instance_name(element, new_name):
+    """Set an instance name using a transaction-friendly path.
+
+    Views and other instance-like elements are first tried through writable
+    parameters when available, then fall back to the standard name setter.
+    """
+    if element is None:
+        return False
+
+    candidate_bips = [
+        getattr(BuiltInParameter, 'VIEW_NAME', None),
+        getattr(BuiltInParameter, 'ALL_MODEL_TYPE_NAME', None),
+        getattr(BuiltInParameter, 'ALL_MODEL_INSTANCE_COMMENTS', None),
+    ]
+
+    for bip in candidate_bips:
+        if bip is None:
+            continue
+
+        try:
+            param = element.get_Parameter(bip)
+            if param and not param.IsReadOnly:
+                storage = param.StorageType
+                text_value = '' if new_name is None else str(new_name)
+
+                if storage == StorageType.String:
+                    param.Set(text_value)
+                    return True
+
+                try:
+                    param.SetValueString(text_value)
+                    return True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    return _safe_set_element_name(element, new_name)
 
 
 def _find_parameter_for_write(element, param_name, is_instance_mode):
@@ -574,7 +699,7 @@ class PreviewItem(object):
         self.final = False
         self.tooltip = ''
     
-    def format_value(self, pattern, param_values, tokenizer_func):
+    def format_value(self, pattern, param_values, tokenizer_func, counter_value=''):
         """Format new name using tokenization and parameter substitution"""
         if self.final:
             return
@@ -592,6 +717,10 @@ class PreviewItem(object):
             param_dict = {}
             for i, val in enumerate(param_values, 1):
                 param_dict['param{}'.format(i)] = val if val else ''
+
+            # Counter aliases: {param6} and {count}
+            param_dict['param6'] = '' if counter_value is None else str(counter_value)
+            param_dict['count'] = '' if counter_value is None else str(counter_value)
             
             # Use the tokenization + parameter substitution pattern application
             self.NewName = apply_pattern(self.CurrentName, pattern, param_dict, tokenizer_func)
@@ -640,6 +769,11 @@ class ReValueDialog(object):
         
         # Get controls - pattern
         self.txt_pattern = self.window.FindName('txt_pattern')
+
+        # Get controls - optional counter
+        self.chk_enable_counter = self.window.FindName('chk_enable_counter')
+        self.txt_counter_start = self.window.FindName('txt_counter_start')
+        self.txt_counter_increment = self.window.FindName('txt_counter_increment')
         
         # Get controls - tokenization display
         self.txt_tokenization = self.window.FindName('txt_tokenization')
@@ -662,6 +796,14 @@ class ReValueDialog(object):
         
         for combo in self.param_combos:
             combo.SelectionChanged += self.OnSettingsChanged
+
+        if self.chk_enable_counter:
+            self.chk_enable_counter.Checked += self.OnSettingsChanged
+            self.chk_enable_counter.Unchecked += self.OnSettingsChanged
+        if self.txt_counter_start:
+            self.txt_counter_start.TextChanged += self.OnSettingsChanged
+        if self.txt_counter_increment:
+            self.txt_counter_increment.TextChanged += self.OnSettingsChanged
         
         self.txt_pattern.TextChanged += self.OnSettingsChanged
         self.preview_grid.SelectedCellsChanged += self.OnGridSelectionChanged
@@ -686,6 +828,14 @@ class ReValueDialog(object):
         # Set default delimiters
         if self.txt_delimiters:
             self.txt_delimiters.Text = DEFAULT_DELIMITERS
+
+        # Set default counter values (disabled by default)
+        if self.chk_enable_counter:
+            self.chk_enable_counter.IsChecked = False
+        if self.txt_counter_start and not self.txt_counter_start.Text:
+            self.txt_counter_start.Text = 'A'
+        if self.txt_counter_increment and not self.txt_counter_increment.Text:
+            self.txt_counter_increment.Text = '1'
         
         # Collect all parameters and cache them
         self.available_params, self.param_values_map = collect_all_parameters(
@@ -894,17 +1044,38 @@ class ReValueDialog(object):
                 self.txt_tokenization.Text = 'Tokens: {}'.format(token_display)
             else:
                 self.txt_tokenization.Text = 'Tokens: (none)'
+
+    def get_counter_generator(self):
+        """Build counter generator based on optional counter UI settings."""
+        if not self.chk_enable_counter or not self.chk_enable_counter.IsChecked:
+            return None, None
+
+        start_text = self.txt_counter_start.Text if self.txt_counter_start else ''
+        increment_text = self.txt_counter_increment.Text if self.txt_counter_increment else '1'
+        return build_counter_generator(start_text, increment_text)
     
     def update_preview(self):
         """Update preview grid with new names using current pattern"""
         pattern = self.txt_pattern.Text
         tokenizer_func = self.get_tokenizer_func()
+        counter_gen, counter_error = self.get_counter_generator()
+
+        if counter_error:
+            for item in self.preview_items:
+                item.CurrentName = self.get_original_source_text(item.Element)
+                item.NewName = ''
+                item.tooltip = 'Counter Error: {}'.format(counter_error)
+
+            self.preview_grid.Items.Refresh()
+            self.update_tokenization_display()
+            return
         
-        for item in self.preview_items:
+        for idx, item in enumerate(self.preview_items):
             # CurrentName column always reflects the selected tokenization source.
             item.CurrentName = self.get_original_source_text(item.Element)
             param_values = self.get_selected_param_values(item.Element)
-            item.format_value(pattern, param_values, tokenizer_func)
+            counter_value = counter_gen(idx) if counter_gen else ''
+            item.format_value(pattern, param_values, tokenizer_func, counter_value)
         
         self.preview_grid.Items.Refresh()
         self.update_tokenization_display()
@@ -1115,36 +1286,89 @@ def revalue_elements(revalue_map, is_instance_mode, target_param_name=''):
         success_count = 0
         failed_count = 0
 
-        with revit.Transaction("Re-Value Elements"):
-            for element, new_name in revalue_map.items():
-                try:
-                    if target_param_name:
-                        success = _safe_set_parameter_value(
-                            element, target_param_name, new_name, is_instance_mode)
-                    else:
-                        if is_instance_mode:
-                            success = _safe_set_element_name(element, new_name)
-                        else:
-                            success = _safe_set_type_name(element, new_name)
-
-                    if success:
-                        success_count += 1
-                    else:
+        if doc.IsModifiable:
+            # When another transaction is already open, Revit may merge undo records.
+            # We still execute safely, but cannot guarantee a new top-level undo item.
+            print("INFO: Document is already modifiable; changes may merge into an existing undo record.")
+            write_scope = SubTransaction(doc)
+            write_scope.Start()
+            try:
+                for element, new_name in revalue_map.items():
+                    try:
                         if target_param_name:
-                            print("ERROR re-valuing element id {} parameter '{}' to '{}': No writable parameter found.".format(
-                                element.Id.IntegerValue, target_param_name, new_name))
+                            success = _safe_set_parameter_value(
+                                element, target_param_name, new_name, is_instance_mode)
                         else:
-                            print("ERROR re-valuing element id {} to '{}': No writable name field found.".format(
-                                element.Id.IntegerValue, new_name))
+                            if is_instance_mode:
+                                success = _transactional_set_instance_name(element, new_name)
+                            else:
+                                success = _safe_set_type_name(element, new_name)
+
+                        if success:
+                            success_count += 1
+                        else:
+                            if target_param_name:
+                                print("ERROR re-valuing element id {} parameter '{}' to '{}': No writable parameter found.".format(
+                                    element.Id.IntegerValue, target_param_name, new_name))
+                            else:
+                                print("ERROR re-valuing element id {} to '{}': No writable name field found.".format(
+                                    element.Id.IntegerValue, new_name))
+                            failed_count += 1
+                    except Exception as e:
+                        if target_param_name:
+                            print("ERROR re-valuing element id {} parameter '{}' to '{}': {}".format(
+                                element.Id.IntegerValue, target_param_name, new_name, str(e)))
+                        else:
+                            print("ERROR re-valuing element id {} to '{}': {}".format(
+                                element.Id.IntegerValue, new_name, str(e)))
                         failed_count += 1
-                except Exception as e:
-                    if target_param_name:
-                        print("ERROR re-valuing element id {} parameter '{}' to '{}': {}".format(
-                            element.Id.IntegerValue, target_param_name, new_name, str(e)))
-                    else:
-                        print("ERROR re-valuing element id {} to '{}': {}".format(
-                            element.Id.IntegerValue, new_name, str(e)))
-                    failed_count += 1
+                write_scope.Commit()
+            except Exception:
+                write_scope.RollBack()
+                raise
+        else:
+            tg = TransactionGroup(doc, "Re-Value Elements")
+            tg.Start()
+            tx = Transaction(doc, "Re-Value Elements")
+            tx.Start()
+            try:
+                for element, new_name in revalue_map.items():
+                    try:
+                        if target_param_name:
+                            success = _safe_set_parameter_value(
+                                element, target_param_name, new_name, is_instance_mode)
+                        else:
+                            if is_instance_mode:
+                                success = _transactional_set_instance_name(element, new_name)
+                            else:
+                                success = _safe_set_type_name(element, new_name)
+
+                        if success:
+                            success_count += 1
+                        else:
+                            if target_param_name:
+                                print("ERROR re-valuing element id {} parameter '{}' to '{}': No writable parameter found.".format(
+                                    element.Id.IntegerValue, target_param_name, new_name))
+                            else:
+                                print("ERROR re-valuing element id {} to '{}': No writable name field found.".format(
+                                    element.Id.IntegerValue, new_name))
+                            failed_count += 1
+                    except Exception as e:
+                        if target_param_name:
+                            print("ERROR re-valuing element id {} parameter '{}' to '{}': {}".format(
+                                element.Id.IntegerValue, target_param_name, new_name, str(e)))
+                        else:
+                            print("ERROR re-valuing element id {} to '{}': {}".format(
+                                element.Id.IntegerValue, new_name, str(e)))
+                        failed_count += 1
+
+                tx.Commit()
+                tg.Assimilate()
+            except Exception:
+                if tx.GetStatus() == TransactionStatus.Started:
+                    tx.RollBack()
+                tg.RollBack()
+                raise
         
         message = "Re-valued {} element(s) successfully.".format(success_count)
         if failed_count > 0:
@@ -1154,6 +1378,29 @@ def revalue_elements(revalue_map, is_instance_mode, target_param_name=''):
         
     except Exception as e:
         forms.alert("Error during re-value: {}".format(str(e)), exitscript=True)
+
+
+def _resolve_target_param_name(selected_source_name):
+    """Normalize source selection into explicit write target.
+
+    Empty/placeholder values route to rename mode (empty target parameter).
+    """
+    if selected_source_name is None:
+        return ''
+
+    try:
+        normalized = str(selected_source_name).strip()
+    except Exception:
+        return ''
+
+    if not normalized:
+        return ''
+
+    lowered = normalized.lower()
+    if lowered in ['<none>', '(none)', 'none']:
+        return ''
+
+    return normalized
 
 
 # ============================================================================
@@ -1171,7 +1418,8 @@ if __name__ == '__main__':
     if result:
         revalue_map = dialog.get_revalue_map()
         is_inst_mode = dialog.is_instance_mode
-        target_param_name = dialog.get_selected_original_param_name()
+        target_param_name = _resolve_target_param_name(
+            dialog.get_selected_original_param_name())
         
         if revalue_map:
             revalue_elements(revalue_map, is_inst_mode, target_param_name)

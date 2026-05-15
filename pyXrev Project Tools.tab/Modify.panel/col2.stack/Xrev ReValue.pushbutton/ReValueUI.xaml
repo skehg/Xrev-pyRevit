@@ -120,6 +120,34 @@
                              Padding="5"/>
                 </DockPanel>
 
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <CheckBox x:Name="chk_enable_counter"
+                              Content="Enable Counter ({count} / {param6})"
+                              VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <DockPanel Margin="0,0,0,6">
+                    <TextBlock Text="Start Value:" Width="100" DockPanel.Dock="Left" VerticalAlignment="Center"/>
+                    <TextBox x:Name="txt_counter_start"
+                             Height="24"
+                             Width="160"
+                             FontSize="11" FontFamily="Courier New"
+                             VerticalAlignment="Center"
+                             VerticalContentAlignment="Center"
+                             Padding="3"/>
+                </DockPanel>
+
+                <DockPanel Margin="0,0,0,10">
+                    <TextBlock Text="Increment:" Width="100" DockPanel.Dock="Left" VerticalAlignment="Center"/>
+                    <TextBox x:Name="txt_counter_increment"
+                             Height="24"
+                             Width="160"
+                             FontSize="11" FontFamily="Courier New"
+                             VerticalAlignment="Center"
+                             VerticalContentAlignment="Center"
+                             Padding="3"/>
+                </DockPanel>
+
                 <Button x:Name="btn_syntax_examples"
                         Content="Syntax and Examples"
                         Width="180"
