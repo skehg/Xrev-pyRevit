@@ -4,11 +4,11 @@
             "default_enabled": "True",
             "type": "extension",
             "rocket_mode_compatible": "True",
-            "name": "pyXrev-Project Toolss",
+            "name": "pyXrev-Project Tools",
             "description": "Extensions for Revit Productivity",
             "author": "Kent Watson",
             "author_profile": "",
-            "url": "https://github.com/",
+            "url": "https://github.com/skehg/Xrev-pyRevit.git",
             "website": "",
             "image": "",
             "dependencies": []

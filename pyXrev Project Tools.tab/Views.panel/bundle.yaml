@@ -1,5 +1,4 @@
 layout:
-  - CreateViews
-  - DatumControl
   - col1
   - col2
+  - col3

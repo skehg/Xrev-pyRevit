@@ -1,5 +1,4 @@
 layout:
-  - ToggleReferencePlanes
-  - ScopeboxReport
-  - ObjectOverrides
-  
+  - CreateViews
+  - DatumControl
+  - align_viewports
